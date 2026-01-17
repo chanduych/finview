@@ -1,0 +1,3621 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+    PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid
+} from 'recharts';
+// Import xirr - CommonJS module
+// @ts-ignore - CommonJS module compatibility
+import xirrRaw from 'xirr';
+
+// Extract the actual function from the module
+let xirr;
+if (typeof xirrRaw === 'function') {
+    xirr = xirrRaw;
+} else if (xirrRaw && typeof xirrRaw.default === 'function') {
+    xirr = xirrRaw.default;
+} else if (xirrRaw && typeof xirrRaw.xirr === 'function') {
+    xirr = xirrRaw.xirr;
+} else {
+    // Fallback: try to get it from the module object
+    xirr = xirrRaw;
+    console.warn('XIRR import warning:', typeof xirrRaw, Object.keys(xirrRaw || {}));
+}
+
+// Verify it's a function
+if (typeof xirr !== 'function') {
+    console.error('XIRR is not a function. Type:', typeof xirr, 'Value:', xirr);
+}
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
+import {
+    Search, Plus, Trash2, TrendingUp, TrendingDown,
+    Wallet, PieChart as PieIcon, Activity, RefreshCw,
+    ChevronRight, ArrowUpRight, ArrowDownRight, Briefcase,
+    Sparkles, MessageSquare, X, Info, ShieldAlert, Zap, Clock, CheckCircle2,
+    Layers, FolderPlus, Edit3, Save, Filter, Check, Calendar, History,
+    Download, Upload, Settings, AlertCircle, Eye, FileJson, ChevronDown, ChevronUp,
+    SlidersHorizontal, SearchIcon, Loader2, Building2, MoreVertical
+} from 'lucide-react';
+
+const APP_ID = 'bharat-invest-tracker-pro-v6';
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+const ALPHA_VANTAGE_API_KEY = '3R1G6SEYDG5XF9JY'; // Free tier: 5 req/min, 25 req/day
+
+const App = () => {
+    // --- State ---
+    const [portfolio, setPortfolio] = useState(() => {
+        const saved = localStorage.getItem(`${APP_ID}_portfolio`);
+        return saved ? JSON.parse(saved) : [];
+    });
+    const [accounts, setAccounts] = useState(() => {
+        const saved = localStorage.getItem(`${APP_ID}_accounts`);
+        return saved ? JSON.parse(saved) : ['Primary Wallet', 'Brokerage'];
+    });
+
+    const [activeAccounts, setActiveAccounts] = useState(accounts);
+    const [selectedView, setSelectedView] = useState(() => {
+        const saved = localStorage.getItem(`${APP_ID}_selectedView`);
+        return saved || 'ALL';
+    });
+    const [expandedGroups, setExpandedGroups] = useState(() => {
+        const saved = localStorage.getItem(`${APP_ID}_expandedGroups`);
+        return saved ? JSON.parse(saved) : ['STOCK', 'MF', 'ETF', 'CASH'];
+    });
+    const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
+    const [capitalDeploymentRange, setCapitalDeploymentRange] = useState('12'); // '6', '12', '24', 'all'
+    const [marketPrices, setMarketPrices] = useState(() => {
+        const saved = localStorage.getItem(`${APP_ID}_market_prices`);
+        if (saved) {
+            const data = JSON.parse(saved);
+            // Check if data is stale (older than 5 minutes) and clear it
+            const now = Date.now();
+            const filtered = {};
+            Object.keys(data).forEach(symbol => {
+                if (data[symbol].timestamp && (now - data[symbol].timestamp) < 5 * 60 * 1000) {
+                    filtered[symbol] = data[symbol];
+                }
+            });
+            return filtered;
+        }
+        return {};
+    });
+
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [expandedAsset, setExpandedAsset] = useState(null);
+    const [tableFilter, setTableFilter] = useState('');
+
+    // UI Feedback state
+    const [isAddingWallet, setIsAddingWallet] = useState(false);
+    const [newWalletName, setNewWalletName] = useState('');
+    const [walletToDelete, setWalletToDelete] = useState(null);
+    const [assetToDelete, setAssetToDelete] = useState(null);
+    const [assetMenuOpen, setAssetMenuOpen] = useState(null);
+    const [editingId, setEditingId] = useState(null);
+    const [editValue, setEditValue] = useState('');
+    const [editingTransaction, setEditingTransaction] = useState(null);
+    const [showReportsModal, setShowReportsModal] = useState(false);
+    const [selectedAssetType, setSelectedAssetType] = useState('STOCK');
+    const [sector, setSector] = useState('');
+
+    // Add Modal State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedAssetName, setSelectedAssetName] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [buyPrice, setBuyPrice] = useState('');
+    const [quantity, setQuantity] = useState('');
+    const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedAccount, setSelectedAccount] = useState(accounts[0] || '');
+    const [addStatus, setAddStatus] = useState('idle');
+    const [verifyLoading, setVerifyLoading] = useState(false);
+    const [previewPrice, setPreviewPrice] = useState(null);
+
+    // --- Persistence ---
+    useEffect(() => {
+        localStorage.setItem(`${APP_ID}_portfolio`, JSON.stringify(portfolio));
+        localStorage.setItem(`${APP_ID}_accounts`, JSON.stringify(accounts));
+        localStorage.setItem(`${APP_ID}_market_prices`, JSON.stringify(marketPrices));
+    }, [portfolio, accounts, marketPrices]);
+
+    // Safety: Ensure selectedAccount is always valid if wallets are deleted
+    useEffect(() => {
+        if (!accounts.includes(selectedAccount)) {
+            setSelectedAccount(accounts[0] || '');
+        }
+    }, [accounts]);
+
+    // Close asset menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (assetMenuOpen && !event.target.closest('.asset-menu-container')) {
+                setAssetMenuOpen(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [assetMenuOpen]);
+
+// Popular Indian Stocks List for Search Suggestions (outside component for better performance)
+const POPULAR_STOCKS = [
+    { symbol: 'RELIANCE', name: 'Reliance Industries Ltd' },
+    { symbol: 'TCS', name: 'Tata Consultancy Services' },
+    { symbol: 'HDFCBANK', name: 'HDFC Bank Ltd' },
+    { symbol: 'INFY', name: 'Infosys Ltd' },
+    { symbol: 'ICICIBANK', name: 'ICICI Bank Ltd' },
+    { symbol: 'HINDUNILVR', name: 'Hindustan Unilever Ltd' },
+    { symbol: 'SBIN', name: 'State Bank of India' },
+    { symbol: 'BHARTIARTL', name: 'Bharti Airtel Ltd' },
+    { symbol: 'ITC', name: 'ITC Ltd' },
+    { symbol: 'KOTAKBANK', name: 'Kotak Mahindra Bank' },
+    { symbol: 'LT', name: 'Larsen & Toubro Ltd' },
+    { symbol: 'AXISBANK', name: 'Axis Bank Ltd' },
+    { symbol: 'ASIANPAINT', name: 'Asian Paints Ltd' },
+    { symbol: 'MARUTI', name: 'Maruti Suzuki India Ltd' },
+    { symbol: 'TITAN', name: 'Titan Company Ltd' },
+    { symbol: 'NESTLEIND', name: 'Nestle India Ltd' },
+    { symbol: 'ULTRACEMCO', name: 'UltraTech Cement Ltd' },
+    { symbol: 'WIPRO', name: 'Wipro Ltd' },
+    { symbol: 'ONGC', name: 'Oil & Natural Gas Corp Ltd' },
+    { symbol: 'POWERGRID', name: 'Power Grid Corp of India' },
+    { symbol: 'NTPC', name: 'NTPC Ltd' },
+    { symbol: 'TECHM', name: 'Tech Mahindra Ltd' },
+    { symbol: 'HCLTECH', name: 'HCL Technologies Ltd' },
+    { symbol: 'SUNPHARMA', name: 'Sun Pharmaceutical Inds' },
+    { symbol: 'BAJFINANCE', name: 'Bajaj Finance Ltd' },
+    { symbol: 'TATAMOTORS', name: 'Tata Motors Ltd' },
+    { symbol: 'JSWSTEEL', name: 'JSW Steel Ltd' },
+    { symbol: 'TATASTEEL', name: 'Tata Steel Ltd' },
+    { symbol: 'ADANIENT', name: 'Adani Enterprises Ltd' },
+    { symbol: 'ADANIPORTS', name: 'Adani Ports & Special Economic Zone' }
+];
+
+    // --- Search Suggestion Engine ---
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(async () => {
+            const query = searchQuery.trim();
+
+            if (query.length < 2) {
+                setSearchResults([]);
+                return;
+            }
+
+            setIsSearching(true);
+            const upperQuery = query.toUpperCase();
+
+            try {
+                // For Mutual Funds (numeric or when type is MF)
+                if (/^\d+$/.test(query) || selectedAssetType === 'MF') {
+                    try {
+                        const response = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (Array.isArray(data) && data.length > 0) {
+                                setSearchResults(data.slice(0, 5).map(scheme => ({
+                                    schemeCode: scheme.schemeCode,
+                                    schemeName: scheme.schemeName,
+                                    searchType: 'MF'
+                                })));
+                            } else {
+                                setSearchResults([]);
+                            }
+                        } else {
+                            setSearchResults([]);
+                        }
+                    } catch (e) {
+                        console.error('MF search error:', e);
+                        setSearchResults([]);
+                    }
+                }
+                // For Stocks/ETFs - Use Alpha Vantage + NSE data
+                else if (selectedAssetType === 'STOCK' || selectedAssetType === 'ETF') {
+                    // First, filter popular stocks (instant results)
+                    const matchingStocks = POPULAR_STOCKS.filter(stock =>
+                        stock.symbol.toUpperCase().includes(upperQuery) ||
+                        stock.name.toUpperCase().includes(upperQuery)
+                    ).slice(0, 5).map(s => ({
+                        symbol: s.symbol,
+                        name: s.name,
+                        searchType: selectedAssetType
+                    }));
+
+                    // Show popular stocks immediately
+                    if (matchingStocks.length > 0) {
+                        setSearchResults(matchingStocks);
+                    }
+
+                    // Try Alpha Vantage SYMBOL_SEARCH API (best for Indian stocks)
+                    try {
+                        const alphaVantageUrl = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+                        const avResponse = await fetch(alphaVantageUrl);
+
+                        if (avResponse.ok) {
+                            const avData = await avResponse.json();
+
+                            // Check for API limit message
+                            if (avData['Note'] || avData['Information']) {
+                                console.warn('Alpha Vantage API limit reached, using fallback');
+                            } else if (avData.bestMatches && Array.isArray(avData.bestMatches)) {
+                                // Filter for NSE/BSE stocks
+                                const avResults = avData.bestMatches
+                                    .filter(match => {
+                                        const region = match['4. region'] || '';
+                                        return region.includes('India') || region.includes('NSE') || region.includes('BSE');
+                                    })
+                                    .slice(0, 5)
+                                    .map(match => {
+                                        const symbol = match['1. symbol'] || '';
+                                        const region = match['4. region'] || '';
+                                        // Detect exchange from symbol or region
+                                        const isBSE = symbol.startsWith('BSE:') || region.includes('BSE') || region.includes('Bombay');
+                                        const isNSE = symbol.startsWith('NSE:') || region.includes('NSE') || (!isBSE && region.includes('India'));
+                                        // Remove exchange prefix if present (NSE:TCS -> TCS)
+                                        const cleanSymbol = symbol.replace(/^(NSE|BSE):/i, '');
+                                        return {
+                                            symbol: cleanSymbol.toUpperCase(),
+                                            name: match['2. name'] || cleanSymbol,
+                                            searchType: selectedAssetType,
+                                            exchange: isBSE ? 'BSE' : (isNSE ? 'NSE' : null)
+                                        };
+                                    });
+
+                                if (avResults.length > 0) {
+                                    // Combine with popular stocks, remove duplicates
+                                    const combined = [...matchingStocks, ...avResults];
+                                    const unique = combined.filter((v, i, a) =>
+                                        a.findIndex(t => t.symbol === v.symbol) === i
+                                    );
+                                    setSearchResults(unique.slice(0, 5));
+                                    setIsSearching(false);
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Alpha Vantage search error:', e);
+                    }
+
+                    // Fallback to NSE API if Alpha Vantage doesn't work
+                    try {
+                        const nseUrl = `https://www.nseindia.com/api/search/autocomplete?q=${encodeURIComponent(query)}`;
+                        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(nseUrl)}`;
+
+                        const response = await fetch(proxyUrl, {
+                            headers: {
+                                'Accept': 'application/json',
+                            }
+                        });
+
+                        if (response.ok) {
+                            const json = await response.json();
+                            let nseData = null;
+                            try {
+                                nseData = JSON.parse(json.contents);
+                            } catch {
+                                nseData = json.contents ? JSON.parse(json.contents) : null;
+                            }
+
+                            if (nseData && Array.isArray(nseData) && nseData.length > 0) {
+                                const nseResults = nseData
+                                    .filter(item => item.symbol || item.name)
+                                    .slice(0, 5)
+                                    .map(item => ({
+                                        symbol: (item.symbol || item.identifier || '').toUpperCase(),
+                                        name: item.name || item.symbol || item.identifier,
+                                        searchType: selectedAssetType
+                                    }));
+
+                                // Combine with popular stocks, remove duplicates
+                                const combined = [...matchingStocks, ...nseResults];
+                                const unique = combined.filter((v, i, a) =>
+                                    a.findIndex(t => t.symbol === v.symbol) === i
+                                );
+                                setSearchResults(unique.slice(0, 5));
+                            } else if (matchingStocks.length === 0) {
+                                // Final fallback to Yahoo Finance
+                                try {
+                                    const yahooSearchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query + ' NSE')}&quotesCount=5`;
+                                    const yahooProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooSearchUrl)}`;
+                                    const yahooResponse = await fetch(yahooProxyUrl);
+                                    if (yahooResponse.ok) {
+                                        const yahooJson = await yahooResponse.json();
+                                        const yahooData = JSON.parse(yahooJson.contents);
+
+                                        if (yahooData?.quotes && Array.isArray(yahooData.quotes)) {
+                                            const yahooResults = yahooData.quotes
+                                                .filter(q => q.exchange === 'NSE' || q.exchange === 'BSE')
+                                                .slice(0, 5)
+                                                .map(quote => ({
+                                                    symbol: (quote.symbol || '').replace('.NS', '').replace('.BO', ''),
+                                                    name: quote.longname || quote.shortname || quote.symbol,
+                                                    searchType: selectedAssetType
+                                                }));
+
+                                            if (yahooResults.length > 0) {
+                                                setSearchResults(yahooResults);
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Yahoo search error:', e);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('NSE search error:', e);
+                    }
+
+                    setIsSearching(false);
+                }
+                // For Cash - no search needed
+                else if (selectedAssetType === 'CASH') {
+                    setSearchResults([]);
+                }
+                // Default: search both stocks and MF
+                else {
+                    // Try stocks first (instant from popular list)
+                    const matchingStocks = POPULAR_STOCKS.filter(stock =>
+                        stock.symbol.toUpperCase().includes(upperQuery) ||
+                        stock.name.toUpperCase().includes(upperQuery)
+                    ).slice(0, 3).map(s => ({
+                        symbol: s.symbol,
+                        name: s.name,
+                        searchType: 'STOCK'
+                    }));
+
+                    // Try MF in parallel
+                    try {
+                        const mfResponse = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`);
+                        if (mfResponse.ok) {
+                            const mfData = await mfResponse.json();
+                            const mfResults = Array.isArray(mfData) ? mfData.slice(0, 2).map(scheme => ({
+                                schemeCode: scheme.schemeCode,
+                                schemeName: scheme.schemeName,
+                                searchType: 'MF'
+                            })) : [];
+                            setSearchResults([...matchingStocks, ...mfResults]);
+                        } else {
+                            setSearchResults(matchingStocks);
+                        }
+                    } catch (e) {
+                        setSearchResults(matchingStocks);
+                    }
+                }
+            } catch (e) {
+                console.error('Search error:', e);
+                setSearchResults([]);
+            } finally {
+                setIsSearching(false);
+            }
+        }, 300); // Reduced debounce to 300ms for faster response
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery, selectedAssetType]);
+
+    // --- Market Engine ---
+    const getMarketData = async (symbol, type, options = {}) => {
+        try {
+            if (type === 'MF') {
+                const res = await fetch(`https://api.mfapi.in/mf/${symbol}`);
+                const data = await res.json();
+                if (!data.data?.[0]) return null;
+                const nav = parseFloat(data.data[0].nav);
+                const prevNav = data.data[1] ? parseFloat(data.data[1].nav) : nav;
+                return {
+                    price: nav,
+                    change: nav - prevNav,
+                    changePercent: prevNav !== 0 ? ((nav - prevNav) / prevNav) * 100 : 0,
+                    name: data.meta.scheme_name
+                };
+            } else if (type === 'CASH') {
+                return { price: 1, change: 0, changePercent: 0, name: symbol };
+            } else {
+                // STOCK or ETF - Handle symbol format properly
+                // Prioritize real-time sources (NSE/Yahoo) over delayed sources (Alpha Vantage)
+                const cleanSymbol = symbol.toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
+                const { isBSE, isNSE } = options;
+
+                // PRIORITY 1: NSE API (real-time, only for NSE stocks)
+                if (!isBSE) {
+                    try {
+                        const nseUrl = `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(cleanSymbol)}`;
+                        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(nseUrl)}`;
+                        const nseResponse = await fetch(proxyUrl, {
+                            headers: {
+                                'Accept': 'application/json',
+                            }
+                        });
+
+                        if (nseResponse.ok) {
+                            const nseJson = await nseResponse.json();
+                            let nseData = null;
+                            try {
+                                nseData = typeof nseJson.contents === 'string' ? JSON.parse(nseJson.contents) : nseJson.contents;
+                            } catch {
+                                nseData = nseJson;
+                            }
+
+                            if (nseData?.priceInfo?.lastPrice) {
+                                const lastPrice = parseFloat(nseData.priceInfo.lastPrice);
+                                const prevClose = parseFloat(nseData.priceInfo.previousClose || lastPrice);
+                                return {
+                                    price: lastPrice,
+                                    change: lastPrice - prevClose,
+                                    changePercent: prevClose !== 0 ? ((lastPrice - prevClose) / prevClose) * 100 : 0,
+                                    name: nseData.info?.companyName || nseData.info?.symbol || cleanSymbol,
+                                    timestamp: Date.now() // Add timestamp for freshness check
+                                };
+                            }
+                        }
+                    } catch (nseError) {
+                        console.log('NSE API failed, trying Yahoo Finance:', nseError);
+                    }
+                }
+
+                // PRIORITY 2: Yahoo Finance (real-time, works for both NSE and BSE)
+                const yahooSymbols = isBSE
+                    ? [`${cleanSymbol}.BO`]
+                    : isNSE
+                        ? [`${cleanSymbol}.NS`]
+                        : [`${cleanSymbol}.NS`, `${cleanSymbol}.BO`];
+
+                for (const ticker of yahooSymbols) {
+                    try {
+                        const yahooProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`)}`;
+                        const response = await fetch(yahooProxyUrl);
+                        const json = await response.json();
+                        const yahooData = JSON.parse(json.contents);
+                        if (yahooData?.chart?.result?.[0]) {
+                            const meta = yahooData.chart.result[0].meta;
+                            return {
+                                price: meta.regularMarketPrice,
+                                change: meta.regularMarketPrice - meta.chartPreviousClose,
+                                changePercent: meta.chartPreviousClose !== 0 ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100 : 0,
+                                name: meta.longName || meta.shortName || cleanSymbol,
+                                timestamp: Date.now() // Add timestamp for freshness check
+                            };
+                        }
+                    } catch (e) {
+                        continue; // Try next symbol
+                    }
+                }
+
+                // PRIORITY 3: Alpha Vantage (15-20 min delay, use as last resort)
+                try {
+                    // Determine which exchanges to try based on user input or try both
+                    let avSymbols = [];
+                    if (isBSE) {
+                        avSymbols = [`BSE:${cleanSymbol}`, cleanSymbol]; // Try BSE first
+                    } else if (isNSE) {
+                        avSymbols = [`NSE:${cleanSymbol}`, cleanSymbol]; // Try NSE first
+                    } else {
+                        avSymbols = [`NSE:${cleanSymbol}`, `BSE:${cleanSymbol}`, cleanSymbol]; // Try both
+                    }
+
+                    for (const avSymbol of avSymbols) {
+                        const avUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(avSymbol)}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+                        const avResponse = await fetch(avUrl);
+
+                        if (avResponse.ok) {
+                            const avData = await avResponse.json();
+
+                            // Check for API limit
+                            if (avData['Note'] || avData['Information']) {
+                                console.warn('Alpha Vantage API limit reached');
+                                break;
+                            }
+
+                            const quote = avData['Global Quote'];
+                            if (quote && quote['05. price']) {
+                                const price = parseFloat(quote['05. price']);
+                                const prevClose = parseFloat(quote['08. previous close'] || price);
+                                const change = parseFloat(quote['09. change'] || (price - prevClose));
+                                const changePercent = parseFloat(quote['10. change percent']?.replace('%', '') || ((change / prevClose) * 100));
+
+                                return {
+                                    price: price,
+                                    change: change,
+                                    changePercent: changePercent,
+                                    name: quote['01. symbol']?.replace(/^(NSE|BSE):/i, '') || cleanSymbol,
+                                    timestamp: Date.now(), // Add timestamp
+                                    delayed: true // Mark as delayed data
+                                };
+                            }
+                        }
+                    }
+                } catch (avError) {
+                    console.log('Alpha Vantage API failed:', avError);
+                }
+
+                return null;
+            }
+        } catch (e) {
+            console.error('Market data error:', e);
+            return null;
+        }
+    };
+
+    const handleVerifySymbol = async (customSymbol = null) => {
+        let symbol = (customSymbol || searchQuery).toUpperCase().trim();
+        if (!symbol) return;
+        setVerifyLoading(true);
+        let type = selectedAssetType;
+        if (type === 'STOCK' && /^\d+$/.test(symbol)) type = 'MF';
+
+        // Preserve exchange information if present (e.g., VBL.BSE, RELIANCE.NS)
+        const isBSE = symbol.includes('.BSE') || symbol.includes('.BO');
+        const isNSE = symbol.includes('.NSE') || symbol.includes('.NS');
+
+        // Clean symbol but remember the exchange
+        const cleanSymbol = symbol.replace(/\.(BSE|BO|NSE|NS)$/i, '');
+
+        // If user typed with exchange suffix, use it; otherwise try both
+        let symbolToTry = symbol;
+        if (isBSE) {
+            symbolToTry = cleanSymbol; // Will try BSE: format in getMarketData
+        } else if (isNSE) {
+            symbolToTry = cleanSymbol; // Will try NSE: format in getMarketData
+        } else {
+            symbolToTry = cleanSymbol; // Will try both in getMarketData
+        }
+
+        const data = await getMarketData(symbolToTry, type, { isBSE, isNSE, originalSymbol: symbol });
+        if (data) {
+            setPreviewPrice(data.price);
+            setBuyPrice(data.price.toString());
+            if (data.name) setSelectedAssetName(data.name);
+        } else {
+            setPreviewPrice('Invalid');
+        }
+        setVerifyLoading(false);
+    };
+
+    const handleSelectResult = (result) => {
+        if (result.searchType === 'MF') {
+            // Mutual Fund result
+            setSearchQuery(result.schemeCode.toString());
+            setSelectedAssetName(result.schemeName);
+            setSelectedAssetType('MF');
+            setSearchResults([]);
+            handleVerifySymbol(result.schemeCode.toString());
+        } else {
+            // Stock/ETF result - preserve exchange information
+            let symbolToSet = result.symbol;
+
+            // Check if symbol already has exchange suffix
+            const hasBSE = symbolToSet.includes('.BSE') || symbolToSet.includes('.BO');
+            const hasNSE = symbolToSet.includes('.NS') || symbolToSet.includes('.NSE');
+
+            // Only append exchange suffix if not already present and exchange is known
+            if (!hasBSE && !hasNSE) {
+                if (result.exchange === 'BSE') {
+                    symbolToSet = `${symbolToSet}.BSE`;
+                } else if (result.exchange === 'NSE') {
+                    symbolToSet = `${symbolToSet}.NS`;
+                }
+            }
+
+            setSearchQuery(symbolToSet);
+            setSelectedAssetName(result.name);
+            setSelectedAssetType(result.searchType === 'ETF' ? 'ETF' : 'STOCK');
+            setSearchResults([]);
+            handleVerifySymbol(symbolToSet);
+        }
+    };
+
+    const refreshPrices = async () => {
+        if (portfolio.length === 0) return;
+        setIsRefreshing(true);
+        const symbols = [...new Set(portfolio.map(p => {
+            const symbol = p.symbol;
+            const isBSE = symbol.includes('.BSE') || symbol.includes('.BO');
+            const isNSE = symbol.includes('.NS') || symbol.includes('.NSE');
+            return {
+                symbol: p.symbol,
+                type: p.type,
+                isBSE,
+                isNSE
+            };
+        }))];
+
+        // Refresh prices with proper exchange info
+        const results = await Promise.all(symbols.map(async (s) => {
+            const data = await getMarketData(s.symbol, s.type, { isBSE: s.isBSE, isNSE: s.isNSE });
+            return { symbol: s.symbol, data };
+        }));
+
+        setMarketPrices(prev => {
+            const next = { ...prev };
+            results.forEach(r => {
+                if (r.data) {
+                    next[r.symbol] = {
+                        ...r.data,
+                        timestamp: r.data.timestamp || Date.now() // Ensure timestamp is set
+                    };
+                }
+            });
+            return next;
+        });
+        setIsRefreshing(false);
+    };
+
+    // --- Helper Functions ---
+    const calculateXIRR = (asset) => {
+        try {
+            // Need at least one transaction
+            if (!asset.transactions || asset.transactions.length === 0) {
+                console.log('XIRR: No transactions for', asset.symbol);
+                return null;
+            }
+
+            // Build transaction list with proper dates
+            const transactions = asset.transactions
+                .filter(t => {
+                    if (!t.date || t.quantity <= 0 || t.price <= 0) {
+                        return false;
+                    }
+                    const date = new Date(t.date);
+                    return !isNaN(date.getTime());
+                })
+                .map(t => {
+                    const date = new Date(t.date);
+                    return {
+                        amount: -(t.quantity * t.price), // Negative for outflows (investments)
+                        when: date
+                    };
+                });
+
+            if (transactions.length === 0) {
+                console.log('XIRR: No valid transactions after filtering for', asset.symbol);
+                return null;
+            }
+
+            // Get current value - use provided currentValue or calculate
+            let currentValue = asset.currentValue;
+            if (!currentValue && asset.currentPrice !== undefined && asset.totalQty > 0) {
+                currentValue = asset.totalQty * asset.currentPrice;
+            } else if (!currentValue) {
+                // Fallback to marketPrices
+                const currentPrice = marketPrices[asset.symbol]?.price || asset.avgPrice || 0;
+                currentValue = asset.totalQty * currentPrice;
+            }
+
+            // Add current value as positive inflow (redemption) - this is the key for XIRR
+            if (currentValue > 0 && asset.totalQty > 0) {
+                transactions.push({
+                    amount: currentValue,
+                    when: new Date()
+                });
+            } else {
+                console.log('XIRR: Current value is 0 or invalid for', asset.symbol, 'currentValue:', currentValue, 'totalQty:', asset.totalQty);
+                return null;
+            }
+
+            // Need at least 2 cash flows for XIRR (one investment + one redemption)
+            if (transactions.length < 2) {
+                console.log('XIRR: Not enough transactions for', asset.symbol, 'count:', transactions.length);
+                return null;
+            }
+
+            // Check if we have both positive and negative amounts
+            const hasOutflow = transactions.some(t => t.amount < 0);
+            const hasInflow = transactions.some(t => t.amount > 0);
+
+            if (!hasOutflow || !hasInflow) {
+                console.log('XIRR: Missing outflow or inflow for', asset.symbol, 'hasOutflow:', hasOutflow, 'hasInflow:', hasInflow);
+                return null;
+            }
+
+            // Sort transactions by date (required by xirr library)
+            transactions.sort((a, b) => a.when - b.when);
+
+            // Debug: Log transaction details
+            console.log('XIRR Calculation for', asset.symbol, ':', {
+                transactionCount: transactions.length,
+                transactions: transactions.map(t => ({
+                    amount: t.amount,
+                    date: t.when.toISOString().split('T')[0]
+                })),
+                currentValue: currentValue,
+                totalQty: asset.totalQty
+            });
+
+            // Verify transaction format for xirr library
+            // xirr expects: [{ amount: number, when: Date }, ...]
+            const xirrTransactions = transactions.map(t => ({
+                amount: t.amount,
+                when: t.when instanceof Date ? t.when : new Date(t.when)
+            }));
+
+            // Calculate XIRR
+            let result;
+            try {
+                // The xirr library returns a decimal (e.g., 0.05 for 5%)
+                result = xirr(xirrTransactions);
+                console.log('XIRR raw result for', asset.symbol, ':', result, 'type:', typeof result);
+            } catch (xirrError) {
+                console.error('XIRR library error for', asset.symbol, ':', xirrError);
+                console.error('Transaction data:', JSON.stringify(xirrTransactions.map(t => ({
+                    amount: t.amount,
+                    when: t.when.toISOString()
+                })), null, 2));
+
+                // Check if we have valid cash flows
+                const totalOutflow = transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+                const totalInflow = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+
+                console.log('Cash flow summary:', {
+                    totalOutflow,
+                    totalInflow,
+                    netFlow: totalInflow - totalOutflow,
+                    transactionCount: transactions.length
+                });
+
+                if (totalInflow <= totalOutflow) {
+                    console.log('XIRR: Total inflow must be greater than total outflow for positive return');
+                }
+                return null;
+            }
+
+            // Check if result is valid (not NaN or Infinity)
+            if (result === null || result === undefined || isNaN(result) || !isFinite(result)) {
+                console.log('XIRR: Invalid result for', asset.symbol, 'result:', result, 'type:', typeof result);
+                return null;
+            }
+
+            // xirr returns a decimal (0.05 = 5%), convert to percentage
+            const xirrPercent = result * 100;
+            console.log('XIRR calculated successfully for', asset.symbol, ':', xirrPercent.toFixed(2) + '%');
+            return xirrPercent;
+        } catch (e) {
+            console.error('XIRR calculation error for', asset.symbol, ':', e);
+            if (e.message) {
+                console.error('Error message:', e.message);
+            }
+            return null;
+        }
+    };
+
+    const calculateCapitalGains = (asset) => {
+        const now = new Date();
+        const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        let stcg = 0, ltcg = 0;
+
+        asset.transactions.forEach(tx => {
+            const txDate = new Date(tx.date);
+            const holdingPeriod = (now - txDate) / (1000 * 60 * 60 * 24);
+            const currentPrice = marketPrices[asset.symbol]?.price || asset.avgPrice;
+            const gain = (currentPrice - tx.price) * tx.quantity;
+
+            if (holdingPeriod < 365) {
+                stcg += gain;
+            } else {
+                ltcg += gain;
+            }
+        });
+
+        return { stcg: Math.max(0, stcg), ltcg: Math.max(0, ltcg) };
+    };
+
+    // --- Calculations ---
+    const processedPortfolio = useMemo(() => {
+        return portfolio.map(asset => {
+            const totalQty = asset.transactions.reduce((s, t) => s + t.quantity, 0);
+            const totalCost = asset.transactions.reduce((s, t) => s + (t.quantity * t.price), 0);
+            const totalDividends = (asset.dividends || []).reduce((s, d) => s + d.amount, 0);
+            const avgPrice = totalQty > 0 ? totalCost / totalQty : 0;
+            const mData = marketPrices[asset.symbol] || { price: avgPrice, change: 0, changePercent: 0 };
+            const currentValue = totalQty * mData.price;
+            const absReturn = currentValue - totalCost;
+            const absReturnPercent = totalCost > 0 ? (absReturn / totalCost) * 100 : 0;
+
+            const oldestDate = new Date(Math.min(...asset.transactions.map(t => new Date(t.date))));
+            const years = Math.max(0.01, (new Date() - oldestDate) / 31557600000);
+            const isAnn = years >= 0.5;
+            const perf = isAnn ? (Math.pow((currentValue / totalCost), (1 / years)) - 1) * 100 : absReturnPercent;
+
+            // Calculate XIRR with current value
+            const xirrVal = calculateXIRR({
+                ...asset,
+                totalQty,
+                avgPrice,
+                currentPrice: mData.price,
+                currentValue: currentValue
+            });
+            const capitalGains = calculateCapitalGains({ ...asset, totalQty, avgPrice });
+
+            return {
+                ...asset,
+                totalQty,
+                avgPrice,
+                currentPrice: mData.price,
+                dayChange: (mData.change || 0) * totalQty,
+                dayChangePercent: mData.changePercent || 0,
+                currentValue,
+                investedValue: totalCost,
+                absReturn,
+                absReturnPercent,
+                performanceVal: perf,
+                isAnnualized: isAnn,
+                xirr: xirrVal,
+                capitalGains,
+                totalDividends
+            };
+        });
+    }, [portfolio, marketPrices]);
+
+    const filteredPortfolio = useMemo(() => {
+        return processedPortfolio.filter(p => {
+            const matchesAccount = activeAccounts.includes(p.account);
+            const matchesType = selectedView === 'ALL' || p.type === selectedView;
+            const matchesSearch = p.symbol.toLowerCase().includes(tableFilter.toLowerCase()) ||
+                                (p.name && p.name.toLowerCase().includes(tableFilter.toLowerCase())) ||
+                                p.account.toLowerCase().includes(tableFilter.toLowerCase());
+            return matchesAccount && matchesType && matchesSearch;
+        });
+    }, [processedPortfolio, activeAccounts, selectedView, tableFilter]);
+
+    // Group portfolio by type for "ALL" view
+    const groupedPortfolio = useMemo(() => {
+        if (selectedView !== 'ALL') return {};
+        const groups = {};
+        filteredPortfolio.forEach(item => {
+            if (!groups[item.type]) groups[item.type] = [];
+            groups[item.type].push(item);
+        });
+        return groups;
+    }, [filteredPortfolio, selectedView]);
+
+    // Format currency helper (defined before stats to use in insights)
+    const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val || 0);
+    const formatCurrencyWithDecimals = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
+
+    const stats = useMemo(() => {
+        const invested = filteredPortfolio.reduce((s, p) => s + p.investedValue, 0);
+        const current = filteredPortfolio.reduce((s, p) => s + p.currentValue, 0);
+        const dayChange = filteredPortfolio.reduce((s, p) => s + p.dayChange, 0);
+        const absReturn = current - invested;
+        const absReturnPct = invested > 0 ? (absReturn / invested) * 100 : 0;
+        const dayChangePct = (current - dayChange) > 0 ? (dayChange / (current - dayChange)) * 100 : 0;
+        const totalDividends = filteredPortfolio.reduce((s, p) => s + (p.totalDividends || 0), 0);
+        const totalSTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.stcg || 0), 0);
+        const totalLTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.ltcg || 0), 0);
+
+        const typeAllocation = [
+            { name: 'Equities', value: processedPortfolio.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'Mutual Funds', value: processedPortfolio.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'ETFs', value: processedPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'Cash', value: processedPortfolio.filter(p => p.type === 'CASH').reduce((s,p) => s+p.currentValue, 0) }
+        ].filter(x => x.value > 0);
+
+        const walletAllocation = activeAccounts.map(acc => ({
+            name: acc,
+            value: filteredPortfolio.filter(p => p.account === acc).reduce((s,p) => s+p.currentValue, 0)
+        })).filter(x => x.value > 0);
+
+        // Sector-wise exposure
+        const sectorExposure = {};
+        filteredPortfolio.filter(p => p.type === 'STOCK' && p.sector).forEach(p => {
+            sectorExposure[p.sector] = (sectorExposure[p.sector] || 0) + p.currentValue;
+        });
+
+        const topGainer = [...filteredPortfolio].sort((a,b) => b.absReturnPercent - a.absReturnPercent)[0];
+        const topLoser = [...filteredPortfolio].sort((a,b) => a.absReturnPercent - b.absReturnPercent)[0];
+
+        // Portfolio growth data (monthly snapshots with returns)
+        const growthData = [];
+        const allDates = portfolio.flatMap(p => p.transactions.map(t => new Date(t.date))).sort((a,b) => a - b);
+        if (allDates.length > 0) {
+            const startDate = new Date(allDates[0]);
+            const endDate = new Date();
+            const months = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24 * 30));
+            const maxMonths = Math.min(months, 24); // Show up to 24 months for better granularity
+
+            for (let i = 0; i <= maxMonths; i++) {
+                const date = new Date(startDate);
+                date.setMonth(date.getMonth() + i);
+                const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+                const cutoffDate = monthEnd > endDate ? endDate : monthEnd;
+
+                let monthInvested = 0;
+                let monthValue = 0;
+                portfolio.forEach(asset => {
+                    const txsBeforeDate = asset.transactions.filter(t => new Date(t.date) <= cutoffDate);
+                    const qty = txsBeforeDate.reduce((s, t) => s + t.quantity, 0);
+                    const cost = txsBeforeDate.reduce((s, t) => s + (t.quantity * t.price), 0);
+                    monthInvested += cost;
+                    const price = marketPrices[asset.symbol]?.price || asset.avgPrice;
+                    monthValue += qty * price;
+                });
+
+                const monthReturn = monthValue - monthInvested;
+                const monthReturnPercent = monthInvested > 0 ? (monthReturn / monthInvested) * 100 : 0;
+
+                growthData.push({
+                    month: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+                    date: date,
+                    invested: monthInvested,
+                    value: monthValue,
+                    return: monthReturn,
+                    returnPercent: monthReturnPercent
+                });
+            }
+        }
+
+        // Calculate key growth metrics
+        const growthMetrics = growthData.length > 0 ? {
+            totalReturn: growthData[growthData.length - 1].return,
+            totalReturnPercent: growthData[growthData.length - 1].returnPercent,
+            bestMonth: growthData.reduce((best, curr) => curr.returnPercent > best.returnPercent ? curr : best, growthData[0]),
+            worstMonth: growthData.reduce((worst, curr) => curr.returnPercent < worst.returnPercent ? curr : worst, growthData[0]),
+            avgMonthlyReturn: growthData.length > 1 ? growthData.slice(1).reduce((sum, d) => sum + d.returnPercent, 0) / (growthData.length - 1) : 0
+        } : null;
+
+        // Calculate portfolio XIRR and get oldest transaction date
+        let portfolioXIRR = null;
+        let oldestTransactionDate = null;
+        try {
+            // Use filtered portfolio to match what's displayed
+            const portfolioToUse = filteredPortfolio.length > 0 ? filteredPortfolio : portfolio;
+            const allTransactions = portfolioToUse.flatMap(p => {
+                if (!p.transactions || !Array.isArray(p.transactions)) return [];
+                return p.transactions
+                    .filter(t => t && t.date && t.quantity && t.price)
+                    .map(t => {
+                        const date = new Date(t.date);
+                        return {
+                            amount: -(t.quantity * t.price),
+                            when: date
+                        };
+                    });
+            }).filter(t => t && !isNaN(t.when.getTime()));
+            
+            if (current > 0 && allTransactions.length > 0) {
+                // Find oldest transaction date from valid transactions
+                const dates = allTransactions.map(t => t.when.getTime());
+                if (dates.length > 0) {
+                    const oldestTimestamp = Math.min(...dates);
+                    oldestTransactionDate = new Date(oldestTimestamp);
+
+                    allTransactions.push({ amount: current, when: new Date() });
+                    portfolioXIRR = xirr(allTransactions) * 100;
+                }
+            }
+        } catch (e) {
+            console.error('Error calculating XIRR:', e);
+        }
+
+        // Calculate Portfolio Insights
+        const insights = [];
+        
+        try {
+        // 1. Capital Deployment Insight - Monthly investment breakdown
+        const monthlyInvestments = {};
+        if (portfolio && Array.isArray(portfolio)) {
+            portfolio.forEach(asset => {
+                if (asset && asset.transactions && Array.isArray(asset.transactions) && asset.transactions.length > 0) {
+                    asset.transactions.forEach(tx => {
+                        if (tx && tx.date && tx.quantity && tx.price) {
+                            try {
+                                const txDate = new Date(tx.date);
+                                if (!isNaN(txDate.getTime())) {
+                                    // Use YYYY-MM format for consistent sorting, then format for display
+                                    const year = txDate.getFullYear();
+                                    const month = txDate.getMonth();
+                                    const sortKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+                                    const displayMonth = txDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+                                    
+                                    if (!monthlyInvestments[sortKey]) {
+                                        monthlyInvestments[sortKey] = { amount: 0, display: displayMonth };
+                                    }
+                                    monthlyInvestments[sortKey].amount += (tx.quantity * tx.price);
+                                }
+                            } catch (e) {
+                                // Skip invalid dates
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        const monthlyData = Object.entries(monthlyInvestments)
+            .map(([sortKey, data]) => ({
+                month: data.display,
+                amount: data.amount,
+                sortKey: sortKey
+            }))
+            .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+        const topInvestmentMonth = Object.entries(monthlyInvestments)
+            .sort((a, b) => b[1].amount - a[1].amount)[0];
+        if (topInvestmentMonth && monthlyData.length > 0) {
+            insights.push({
+                type: 'capital',
+                title: 'Capital Deployment',
+                description: `Peak investment month: ${topInvestmentMonth[1].display}`,
+                value: formatCurrency(topInvestmentMonth[1].amount),
+                icon: Calendar,
+                color: 'indigo',
+                data: {
+                    monthlyData,
+                    totalMonths: monthlyData.length,
+                    totalInvested: monthlyData.reduce((sum, m) => sum + m.amount, 0)
+                }
+            });
+        }
+
+        // 2. Concentration Risk Insight
+        const sortedByValue = [...filteredPortfolio].sort((a, b) => b.currentValue - a.currentValue);
+        if (sortedByValue.length >= 2) {
+            const top2Value = sortedByValue.slice(0, 2).reduce((sum, p) => sum + p.currentValue, 0);
+            const top2Percent = current > 0 ? (top2Value / current) * 100 : 0;
+            const top5Holdings = sortedByValue.slice(0, 5).map(p => ({
+                name: p.name || p.symbol,
+                value: p.currentValue,
+                percent: current > 0 ? (p.currentValue / current) * 100 : 0
+            }));
+            if (top2Percent > 40) {
+                insights.push({
+                    type: 'concentration',
+                    title: 'Concentration Risk',
+                    description: `Top 2 holdings account for ${top2Percent.toFixed(1)}% of portfolio`,
+                    value: `${top2Percent.toFixed(0)}%`,
+                    icon: AlertCircle,
+                    color: 'amber',
+                    data: {
+                        top5Holdings,
+                        top2Percent,
+                        top5Percent: top5Holdings.reduce((sum, h) => sum + h.percent, 0)
+                    }
+                });
+            }
+        }
+
+        // 3. Tax Readiness Insight (India-Specific)
+        const ltcgExemption = 125000;
+        const taxableLTCG = Math.max(0, totalLTCG - ltcgExemption);
+        const ltcgTax = taxableLTCG * 0.125;
+        const stcgTax = totalSTCG * 0.20; // 20% on STCG
+        if (totalLTCG > 0 || totalSTCG > 0) {
+            insights.push({
+                type: 'tax',
+                title: 'Tax Readiness',
+                description: `LTCG: ${formatCurrency(totalLTCG)} | STCG: ${formatCurrency(totalSTCG)}`,
+                value: `Total Tax: ${formatCurrency(ltcgTax + stcgTax)}`,
+                icon: ShieldAlert,
+                color: 'emerald',
+                data: {
+                    ltcg: totalLTCG,
+                    stcg: totalSTCG,
+                    ltcgTax,
+                    stcgTax,
+                    totalTax: ltcgTax + stcgTax,
+                    exemption: ltcgExemption,
+                    exemptionLeft: Math.max(0, ltcgExemption - totalLTCG)
+                }
+            });
+        }
+
+        // 4. Overweight Alert
+        const equityValue = typeAllocation.find(t => t.name === 'Equities')?.value || 0;
+        const mfValue = typeAllocation.find(t => t.name === 'Mutual Funds')?.value || 0;
+        const etfValue = typeAllocation.find(t => t.name === 'ETFs')?.value || 0;
+        const cashValue = typeAllocation.find(t => t.name === 'Cash')?.value || 0;
+        if (equityValue > 0 && mfValue > 0) {
+            const equityPercent = (equityValue / current) * 100;
+            const mfPercent = (mfValue / current) * 100;
+            const diff = equityPercent - mfPercent;
+            if (Math.abs(diff) > 10) {
+                insights.push({
+                    type: 'overweight',
+                    title: 'Asset Allocation',
+                    description: `Equity ${diff > 0 ? 'exceeds' : 'below'} MF by ${Math.abs(diff).toFixed(0)}%`,
+                    value: `${equityPercent.toFixed(0)}% vs ${mfPercent.toFixed(0)}%`,
+                    icon: PieIcon,
+                    color: diff > 0 ? 'indigo' : 'slate',
+                    data: {
+                        equity: { value: equityValue, percent: equityPercent },
+                        mf: { value: mfValue, percent: mfPercent },
+                        etf: { value: etfValue, percent: (etfValue / current) * 100 },
+                        cash: { value: cashValue, percent: (cashValue / current) * 100 }
+                    }
+                });
+            }
+        }
+
+        // 5. Win/Loss Ratio Insight
+        const profitable = filteredPortfolio.filter(p => p.absReturn > 0);
+        const unprofitable = filteredPortfolio.filter(p => p.absReturn <= 0);
+        const total = filteredPortfolio.length;
+        if (total > 0) {
+            const winRatio = (profitable.length / total) * 100;
+            const profitableValue = profitable.reduce((sum, p) => sum + p.absReturn, 0);
+            const unprofitableValue = Math.abs(unprofitable.reduce((sum, p) => sum + p.absReturn, 0));
+            insights.push({
+                type: 'winloss',
+                title: 'Win/Loss Ratio',
+                description: `${profitable.length} of ${total} holdings are profitable`,
+                value: `${winRatio.toFixed(0)}%`,
+                icon: profitable.length > total / 2 ? TrendingUp : TrendingDown,
+                color: profitable.length > total / 2 ? 'emerald' : 'rose',
+                data: {
+                    profitable: profitable.length,
+                    unprofitable: unprofitable.length,
+                    total,
+                    profitableValue,
+                    unprofitableValue,
+                    netGain: profitableValue - unprofitableValue
+                }
+            });
+        }
+
+        // 6. Single Stock Overweight Alert
+        if (sortedByValue.length > 0 && current > 0) {
+            const topStockPercent = (sortedByValue[0].currentValue / current) * 100;
+            if (topStockPercent > 20) {
+                insights.push({
+                    type: 'singleOverweight',
+                    title: 'Overweight Alert',
+                    description: `${sortedByValue[0].name || sortedByValue[0].symbol} exceeds 20% of portfolio`,
+                    value: `${topStockPercent.toFixed(0)}%`,
+                    icon: AlertCircle,
+                    color: 'amber',
+                    data: {
+                        stock: sortedByValue[0].name || sortedByValue[0].symbol,
+                        value: sortedByValue[0].currentValue,
+                        percent: topStockPercent,
+                        recommended: 20
+                    }
+                });
+            }
+        }
+        } catch (e) {
+            console.error('Error calculating insights:', e);
+        }
+
+        return {
+            invested, current, absReturn, absReturnPct, dayChange, dayChangePct,
+            typeAllocation, walletAllocation, topGainer, topLoser,
+            sectorExposure, growthData, growthMetrics, portfolioXIRR, oldestTransactionDate, totalDividends, totalSTCG, totalLTCG,
+            insights
+        };
+    }, [filteredPortfolio, activeAccounts, portfolio, marketPrices]);
+
+    // Reset insight index if out of bounds (no auto-rotation)
+    useEffect(() => {
+        if (stats && stats.insights && Array.isArray(stats.insights) && stats.insights.length > 0) {
+            if (currentInsightIndex >= stats.insights.length) {
+                setCurrentInsightIndex(0);
+            }
+        }
+    }, [stats, currentInsightIndex]);
+
+    const handleConfirmAddWallet = () => {
+        const name = newWalletName.trim();
+        if (name && !accounts.includes(name)) {
+            const updated = [...accounts, name];
+            setAccounts(updated);
+            setActiveAccounts(prev => [...prev, name]);
+            setNewWalletName('');
+            setIsAddingWallet(false);
+        }
+    };
+
+    const handleAddAsset = () => {
+        if (!searchQuery || !buyPrice || !quantity) return;
+        setAddStatus('loading');
+
+        const symbol = searchQuery.toUpperCase().trim();
+        let type = selectedAssetType;
+        if (type === 'STOCK' && /^\d+$/.test(symbol)) type = 'MF';
+        const newTransaction = {
+            price: parseFloat(buyPrice),
+            quantity: parseFloat(quantity),
+            date: buyDate,
+            id: Date.now()
+        };
+
+        setPortfolio(prev => {
+            const idx = prev.findIndex(p => p.symbol === symbol && p.account === selectedAccount);
+            if (idx > -1) {
+                return prev.map((item, i) =>
+                    i === idx ? {
+                        ...item,
+                        transactions: [...item.transactions, newTransaction],
+                        sector: sector || item.sector
+                    } : item
+                );
+            } else {
+                return [...prev, {
+                    id: `${symbol}_${selectedAccount}_${Date.now()}`,
+                    symbol,
+                    name: selectedAssetName || symbol,
+                    type,
+                    account: selectedAccount,
+                    sector: sector || '',
+                    transactions: [newTransaction],
+                    dividends: []
+                }];
+            }
+        });
+
+        if (!activeAccounts.includes(selectedAccount)) {
+            setActiveAccounts(prev => [...prev, selectedAccount]);
+        }
+
+        setAddStatus('success');
+        setTimeout(() => {
+            setShowAddModal(false);
+            setAddStatus('idle');
+            setSearchQuery('');
+            setSelectedAssetName('');
+            setBuyPrice('');
+            setQuantity('');
+            setPreviewPrice(null);
+            setSearchResults([]);
+            setSector('');
+            setSelectedAssetType('STOCK');
+        }, 800);
+    };
+
+    const handleExport = (format = 'json') => {
+        if (format === 'json') {
+            const data = { portfolio, accounts, marketPrices, version: '2.0', timestamp: new Date().toISOString() };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Portfolio_Backup.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else if (format === 'csv') {
+            const rows = [['Symbol', 'Name', 'Type', 'Account', 'Sector', 'Quantity', 'Avg Price', 'Current Price', 'Invested', 'Current Value', 'P&L', 'P&L %', 'XIRR %']];
+            processedPortfolio.forEach(p => {
+                rows.push([
+                    p.symbol,
+                    p.name || p.symbol,
+                    p.type,
+                    p.account,
+                    p.sector || '',
+                    p.totalQty.toFixed(2),
+                    p.avgPrice.toFixed(2),
+                    p.currentPrice.toFixed(2),
+                    p.investedValue.toFixed(2),
+                    p.currentValue.toFixed(2),
+                    p.absReturn.toFixed(2),
+                    p.absReturnPercent.toFixed(2),
+                    p.xirr ? p.xirr.toFixed(2) : 'N/A'
+                ]);
+            });
+            const csv = Papa.unparse(rows);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Portfolio_Export_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else if (format === 'excel') {
+            const wsData = [['Symbol', 'Name', 'Type', 'Account', 'Sector', 'Quantity', 'Avg Price', 'Current Price', 'Invested', 'Current Value', 'P&L', 'P&L %', 'XIRR %', 'STCG', 'LTCG', 'Dividends']];
+            processedPortfolio.forEach(p => {
+                wsData.push([
+                    p.symbol,
+                    p.name || p.symbol,
+                    p.type,
+                    p.account,
+                    p.sector || '',
+                    p.totalQty,
+                    p.avgPrice,
+                    p.currentPrice,
+                    p.investedValue,
+                    p.currentValue,
+                    p.absReturn,
+                    p.absReturnPercent,
+                    p.xirr || 0,
+                    p.capitalGains?.stcg || 0,
+                    p.capitalGains?.ltcg || 0,
+                    p.totalDividends || 0
+                ]);
+            });
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, 'Portfolio');
+            XLSX.writeFile(wb, `Portfolio_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+    };
+
+    const getYearWiseSummary = () => {
+        const summary = {};
+        portfolio.forEach(asset => {
+            asset.transactions.forEach(tx => {
+                const year = new Date(tx.date).getFullYear();
+                if (!summary[year]) {
+                    summary[year] = { invested: 0, dividends: 0, transactions: 0 };
+                }
+                summary[year].invested += tx.quantity * tx.price;
+                summary[year].transactions += 1;
+            });
+            if (asset.dividends) {
+                asset.dividends.forEach(div => {
+                    const year = new Date(div.date).getFullYear();
+                    if (!summary[year]) {
+                        summary[year] = { invested: 0, dividends: 0, transactions: 0 };
+                    }
+                    summary[year].dividends += div.amount;
+                });
+            }
+        });
+        return Object.entries(summary).map(([year, data]) => ({
+            year: parseInt(year),
+            ...data
+        })).sort((a, b) => b.year - a.year);
+    };
+
+    const handleImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const fileName = file.name.toLowerCase();
+        const fileExtension = fileName.split('.').pop();
+
+        if (fileExtension === 'json') {
+            // JSON Import (Full Backup)
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = JSON.parse(evt.target.result);
+                    if (data.portfolio && data.accounts) {
+                        setPortfolio(data.portfolio);
+                        setAccounts(data.accounts);
+                        if (data.marketPrices) setMarketPrices(data.marketPrices);
+                        setShowSettingsModal(false);
+                        alert('Portfolio imported successfully!');
+                    } else {
+                        alert('Invalid JSON format. Missing portfolio or accounts data.');
+                    }
+                } catch (err) {
+                    alert('Error reading JSON file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        } else if (fileExtension === 'csv') {
+            // CSV Import (Zerodha Console or Generic Portfolio CSV)
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    try {
+                        const csvData = results.data;
+                        if (csvData.length === 0) {
+                            alert('CSV file is empty.');
+                            return;
+                        }
+
+                        // Check if it's Zerodha Console format
+                        const isZerodhaFormat = csvData[0].hasOwnProperty('Symbol') ||
+                                               csvData[0].hasOwnProperty('symbol') ||
+                                               csvData[0].hasOwnProperty('Instrument') ||
+                                               csvData[0].hasOwnProperty('instrument');
+
+                        if (isZerodhaFormat) {
+                            // Zerodha Console Export Format
+                            const importedPortfolio = [];
+                            const importedAccounts = new Set();
+
+                            csvData.forEach((row, idx) => {
+                                const symbol = (row.Symbol || row.symbol || '').trim().toUpperCase();
+                                const instrument = (row.Instrument || row.instrument || '').trim();
+                                const qty = parseFloat(row.Quantity || row.quantity || row['Txn Qty'] || 0);
+                                const price = parseFloat(row.Price || row.price || row['Avg Price'] || 0);
+                                const date = row.Date || row.date || row['Txn Date'] || new Date().toISOString().split('T')[0];
+                                const account = (row.Account || row.account || 'Imported').trim();
+
+                                if (!symbol || qty === 0 || price === 0) return;
+
+                                importedAccounts.add(account);
+
+                                // Determine asset type
+                                let type = 'STOCK';
+                                if (instrument.toLowerCase().includes('mf') || instrument.toLowerCase().includes('mutual')) {
+                                    type = 'MF';
+                                } else if (instrument.toLowerCase().includes('etf')) {
+                                    type = 'ETF';
+                                } else if (/^\d+$/.test(symbol)) {
+                                    type = 'MF';
+                                }
+
+                                const transaction = {
+                                    id: Date.now() + idx,
+                                    price: price,
+                                    quantity: qty,
+                                    date: date
+                                };
+
+                                const existingAsset = importedPortfolio.find(
+                                    p => p.symbol === symbol && p.account === account
+                                );
+
+                                if (existingAsset) {
+                                    existingAsset.transactions.push(transaction);
+                                } else {
+                                    importedPortfolio.push({
+                                        id: `${symbol}_${account}_${Date.now()}_${idx}`,
+                                        symbol: symbol,
+                                        name: row.Name || row.name || symbol,
+                                        type: type,
+                                        account: account,
+                                        sector: row.Sector || row.sector || '',
+                                        transactions: [transaction],
+                                        dividends: []
+                                    });
+                                }
+                            });
+
+                            setPortfolio(importedPortfolio);
+                            setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                            setShowSettingsModal(false);
+                            alert(`Successfully imported ${importedPortfolio.length} assets from Zerodha CSV!`);
+                        } else {
+                            // Generic Portfolio CSV (from our export)
+                            const importedPortfolio = [];
+                            const importedAccounts = new Set();
+
+                            csvData.forEach((row, idx) => {
+                                const symbol = (row.Symbol || '').trim().toUpperCase();
+                                const type = (row.Type || 'STOCK').toUpperCase();
+                                const account = (row.Account || 'Imported').trim();
+                                const qty = parseFloat(row.Quantity || 0);
+                                const avgPrice = parseFloat(row['Avg Price'] || 0);
+
+                                if (!symbol || qty === 0) return;
+
+                                importedAccounts.add(account);
+
+                                importedPortfolio.push({
+                                    id: `${symbol}_${account}_${Date.now()}_${idx}`,
+                                    symbol: symbol,
+                                    name: row.Name || symbol,
+                                    type: type,
+                                    account: account,
+                                    sector: row.Sector || '',
+                                    transactions: [{
+                                        id: Date.now() + idx,
+                                        price: avgPrice,
+                                        quantity: qty,
+                                        date: new Date().toISOString().split('T')[0]
+                                    }],
+                                    dividends: []
+                                });
+                            });
+
+                            setPortfolio(importedPortfolio);
+                            setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                            setShowSettingsModal(false);
+                            alert(`Successfully imported ${importedPortfolio.length} assets from CSV!`);
+                        }
+                    } catch (err) {
+                        alert('Error parsing CSV: ' + err.message);
+                    }
+                },
+                error: (error) => {
+                    alert('Error reading CSV file: ' + error.message);
+                }
+            });
+        } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+            // Excel Import
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                    if (jsonData.length === 0) {
+                        alert('Excel file is empty.');
+                        return;
+                    }
+
+                    const importedPortfolio = [];
+                    const importedAccounts = new Set();
+
+                    jsonData.forEach((row, idx) => {
+                        const symbol = (row.Symbol || '').trim().toUpperCase();
+                        const type = (row.Type || 'STOCK').toUpperCase();
+                        const account = (row.Account || 'Imported').trim();
+                        const qty = parseFloat(row.Quantity || 0);
+                        const avgPrice = parseFloat(row['Avg Price'] || 0);
+
+                        if (!symbol || qty === 0) return;
+
+                        importedAccounts.add(account);
+
+                        importedPortfolio.push({
+                            id: `${symbol}_${account}_${Date.now()}_${idx}`,
+                            symbol: symbol,
+                            name: row.Name || symbol,
+                            type: type,
+                            account: account,
+                            sector: row.Sector || '',
+                            transactions: [{
+                                id: Date.now() + idx,
+                                price: avgPrice,
+                                quantity: qty,
+                                date: new Date().toISOString().split('T')[0]
+                            }],
+                            dividends: []
+                        });
+                    });
+
+                    setPortfolio(importedPortfolio);
+                    setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                    setShowSettingsModal(false);
+                    alert(`Successfully imported ${importedPortfolio.length} assets from Excel!`);
+                } catch (err) {
+                    alert('Error reading Excel file: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            alert('Unsupported file format. Please use JSON, CSV, or Excel (.xlsx) files.');
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-24 font-sans selection:bg-indigo-100">
+            {/* --- HEADER --- */}
+            <header className="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-6 py-4 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-lg shadow-indigo-200"><Activity size={24} /></div>
+                    <div>
+                        <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none">My Portfolio Tracker - Chandu</h1>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-widest italic">Personal Investment Dashboard</p>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => { setShowSettingsModal(true); setIsAddingWallet(false); }}
+                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all"
+                    >
+                        <Settings size={20} />
+                    </button>
+                    <button onClick={refreshPrices} className={`p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 hover:bg-indigo-100 transition-all ${isRefreshing ? 'animate-spin' : ''}`}><RefreshCw size={20} /></button>
+                </div>
+            </header>
+
+            <main className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
+
+                {/* --- STATS CARDS --- */}
+                <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div className="lg:col-span-2 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
+                        <Wallet size={120} className="absolute -bottom-8 -right-8 opacity-10 group-hover:scale-110 transition-transform text-white" />
+                        <div className="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Net Worth</p>
+                                <h2 className="text-5xl font-black mt-2 tracking-tight tabular-nums">{formatCurrency(stats.current)}</h2>
+
+                                {/* Absolute Profit */}
+                                <div className="mt-3">
+                                    <p className={`text-lg font-black ${stats.absReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {stats.absReturn >= 0 ? '+' : ''}{formatCurrency(stats.absReturn)} overall
+                                    </p>
+                                </div>
+
+                                <div className="mt-4 flex items-center gap-3 flex-wrap">
+                                    <div className={`px-3 py-1 rounded-full text-xs font-black ${stats.absReturn >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                        {stats.absReturn >= 0 ? '+' : ''}{stats.absReturnPct.toFixed(2)}% Returns
+                                    </div>
+                                    {stats.portfolioXIRR !== null && (
+                                        <div className="px-3 py-1 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-400">
+                                            XIRR: {stats.portfolioXIRR.toFixed(2)}%
+                                            {stats.oldestTransactionDate && (
+                                                <span className="ml-1 text-[10px] opacity-80">
+                                                    Since {stats.oldestTransactionDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-slate-500 text-xs font-medium mt-3">Invested: {formatCurrency(stats.invested)}</p>
+                            </div>
+                            <div className="mt-8 pt-6 border-t border-white/10">
+                                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-2">
+                                    <span>Returns</span>
+                                    <span>{stats.absReturnPct >= 0 ? '+' : ''}{stats.absReturnPct.toFixed(1)}%</span>
+                                </div>
+                                <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden relative">
+                                    <div
+                                        className={`h-full transition-all duration-1000 ${stats.absReturn >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`}
+                                        style={{
+                                            width: `${Math.min(100, Math.max(0, Math.abs(stats.absReturnPct)))}%`
+                                        }}
+                                        title={`Absolute return: ${stats.absReturnPct >= 0 ? '+' : ''}${stats.absReturnPct.toFixed(2)}%`}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Today's P&L</p>
+                            <h2 className={`text-3xl font-black mt-2 tabular-nums ${stats.dayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {stats.dayChange >= 0 ? '+' : ''}{formatCurrency(stats.dayChange)}
+                            </h2>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 tracking-widest flex items-center gap-1">
+                                {stats.dayChangePct.toFixed(2)}% session change <Clock size={10}/>
+                            </p>
+                        </div>
+                        <div className="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                             <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Smart Insights</p>
+                             {stats.topGainer ? (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500 font-bold">Best Performer</span>
+                                        <span className="text-emerald-600 font-black truncate max-w-[120px]" title={stats.topGainer.name || stats.topGainer.symbol}>
+                                            {stats.topGainer.name || stats.topGainer.symbol}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-500 font-bold">Worst Performer</span>
+                                        <span className="text-rose-600 font-black truncate max-w-[120px]" title={stats.topLoser.name || stats.topLoser.symbol}>
+                                            {stats.topLoser.name || stats.topLoser.symbol}
+                                        </span>
+                                    </div>
+                                </div>
+                             ) : <p className="text-xs text-slate-300 italic font-bold">Add assets to see insights</p>}
+                        </div>
+                    </div>
+
+                    <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-indigo-100 flex flex-col justify-between relative overflow-hidden">
+                        <PieIcon size={100} className="absolute -bottom-6 -left-6 opacity-10 text-white rotate-12" />
+                        <div className="relative z-10">
+                            <p className="text-indigo-200 text-[10px] font-black uppercase tracking-widest">Active Accounts</p>
+                            <h3 className="text-4xl font-black mt-2 tracking-tight">{accounts.length}</h3>
+                            <div className="flex flex-wrap gap-1 mt-4">
+                                {accounts.slice(0, 3).map(a => (
+                                    <span key={a} className="px-2 py-0.5 bg-white/10 rounded-md text-[9px] font-black uppercase">{a}</span>
+                                ))}
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => { setShowAddModal(true); setTableFilter(''); }}
+                            className="relative z-10 mt-6 w-full py-3 bg-white text-indigo-600 rounded-2xl font-black text-xs uppercase shadow-lg shadow-black/5 hover:scale-105 transition-transform"
+                        >
+                            Quick Add Asset
+                        </button>
+                    </div>
+                </section>
+
+                {/* --- VISUALIZATION ROW --- */}
+                {stats.current > 0 && (
+                    <>
+                        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm h-[320px]">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Asset Allocation</h3>
+                                <ResponsiveContainer width="100%" height="90%">
+                                    <PieChart>
+                                        <Pie
+                                            data={stats.typeAllocation}
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                        >
+                                            {stats.typeAllocation.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(val, name, props) => {
+                                                const total = stats.typeAllocation.reduce((sum, item) => sum + item.value, 0);
+                                                const percent = total > 0 ? (val / total) * 100 : 0;
+                                                return [
+                                                    `${formatCurrency(val)} (${percent.toFixed(1)}%)`,
+                                                    props.payload.name
+                                                ];
+                                            }}
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                                        />
+                                        <Legend
+                                            iconType="circle"
+                                            wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}
+                                            formatter={(value, entry) => {
+                                                const total = stats.typeAllocation.reduce((sum, item) => sum + item.value, 0);
+                                                const percent = total > 0 ? (entry.payload.value / total) * 100 : 0;
+                                                return `${value} (${percent.toFixed(1)}%)`;
+                                            }}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm h-[320px]">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Wallet Distribution</h3>
+                                <ResponsiveContainer width="100%" height="90%">
+                                    <PieChart>
+                                        <Pie
+                                            data={stats.walletAllocation}
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                        >
+                                            {stats.walletAllocation.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} stroke="none" />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(val, name, props) => {
+                                                const total = stats.walletAllocation.reduce((sum, item) => sum + item.value, 0);
+                                                const percent = total > 0 ? (val / total) * 100 : 0;
+                                                return [
+                                                    `${formatCurrency(val)} (${percent.toFixed(1)}%)`,
+                                                    props.payload.name
+                                                ];
+                                            }}
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                                        />
+                                        <Legend
+                                            iconType="circle"
+                                            wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}
+                                            formatter={(value, entry) => {
+                                                const total = stats.walletAllocation.reduce((sum, item) => sum + item.value, 0);
+                                                const percent = total > 0 ? (entry.payload.value / total) * 100 : 0;
+                                                return `${value} (${percent.toFixed(1)}%)`;
+                                            }}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </section>
+
+                        {/* Portfolio Insights - Full Width */}
+                        {stats && stats.insights && Array.isArray(stats.insights) && stats.insights.length > 0 && (
+                            <section className="mt-6">
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div>
+                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Portfolio Insights</h3>
+                                            <p className="text-xs text-slate-600 font-bold">Actionable Intelligence</p>
+                                        </div>
+                                        {stats.insights.length > 1 && (
+                                            <div className="flex items-center gap-2">
+                                                {stats.insights.map((_, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => setCurrentInsightIndex(idx)}
+                                                        className={`w-2 h-2 rounded-full transition-all ${
+                                                            idx === currentInsightIndex ? 'bg-indigo-600 w-6' : 'bg-slate-300'
+                                                        }`}
+                                                        title={`Insight ${idx + 1} of ${stats.insights.length}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Current Insight Display */}
+                                    {(() => {
+                                        const safeIndex = Math.min(currentInsightIndex, stats.insights.length - 1);
+                                        const insight = stats.insights[safeIndex];
+                                        if (!insight || !insight.icon) return null;
+                                        const Icon = insight.icon;
+                                        const colorClasses = {
+                                            indigo: 'bg-indigo-50 border-indigo-200 text-indigo-600',
+                                            emerald: 'bg-emerald-50 border-emerald-200 text-emerald-600',
+                                            amber: 'bg-amber-50 border-amber-200 text-amber-600',
+                                            rose: 'bg-rose-50 border-rose-200 text-rose-600',
+                                            slate: 'bg-slate-50 border-slate-200 text-slate-600'
+                                        };
+                                        const colorClass = colorClasses[insight.color] || colorClasses.slate;
+                                        
+                                        return (
+                                            <div className={`p-6 rounded-xl border-2 ${colorClass} transition-all duration-500`}>
+                                                <div className="flex items-start gap-4 mb-4">
+                                                    <div className={`p-3 rounded-xl bg-white/80 ${insight.color === 'indigo' ? 'text-indigo-600' : insight.color === 'emerald' ? 'text-emerald-600' : insight.color === 'amber' ? 'text-amber-600' : insight.color === 'rose' ? 'text-rose-600' : 'text-slate-600'}`}>
+                                                        <Icon size={32} />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="text-sm font-black uppercase tracking-tight mb-2">{insight.title}</h4>
+                                                        <p className="text-xs text-slate-600 font-bold mb-3">{insight.description}</p>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <span className="text-2xl font-black">{insight.value}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Enhanced Visualizations */}
+                                                {insight.type === 'capital' && insight.data && insight.data.monthlyData && (() => {
+                                                    const allData = insight.data.monthlyData;
+                                                    let filteredData = allData;
+                                                    if (capitalDeploymentRange !== 'all') {
+                                                        const months = parseInt(capitalDeploymentRange);
+                                                        filteredData = allData.slice(-months);
+                                                    }
+                                                    const barWidth = filteredData.length > 12 ? Math.max(20, 400 / filteredData.length) : undefined;
+                                                    
+                                                    return (
+                                                        <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <p className="text-[9px] font-black text-slate-500 uppercase">Monthly Investment Breakdown</p>
+                                                                <div className="flex items-center gap-1">
+                                                                    {['6', '12', '24', 'all'].map((range) => (
+                                                                        <button
+                                                                            key={range}
+                                                                            onClick={() => setCapitalDeploymentRange(range)}
+                                                                            className={`px-2 py-1 text-[8px] font-black uppercase rounded transition-all ${
+                                                                                capitalDeploymentRange === range
+                                                                                    ? 'bg-indigo-600 text-white'
+                                                                                    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                                                            }`}
+                                                                        >
+                                                                            {range === 'all' ? 'All' : `${range}M`}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            <div className="overflow-x-auto -mx-4 px-4">
+                                                                <div style={{ minWidth: `${Math.max(100, filteredData.length * (barWidth || 40))}px` }}>
+                                                                    <ResponsiveContainer width="100%" height={200}>
+                                                                        <BarChart data={filteredData} margin={{ right: 20 }}>
+                                                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                                                            <XAxis 
+                                                                                dataKey="month" 
+                                                                                tick={{ fontSize: 8, fill: '#64748b' }}
+                                                                                angle={filteredData.length > 12 ? -45 : 0}
+                                                                                textAnchor={filteredData.length > 12 ? "end" : "middle"}
+                                                                                height={filteredData.length > 12 ? 60 : 30}
+                                                                                interval={filteredData.length > 24 ? Math.floor(filteredData.length / 12) : 0}
+                                                                            />
+                                                                            <YAxis 
+                                                                                tick={{ fontSize: 9, fill: '#64748b' }}
+                                                                                tickFormatter={(val) => `₹${(val/1000).toFixed(0)}k`}
+                                                                            />
+                                                                            <Tooltip
+                                                                                formatter={(val) => formatCurrency(val)}
+                                                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+                                                                            />
+                                                                            <Bar 
+                                                                                dataKey="amount" 
+                                                                                fill="#6366f1" 
+                                                                                radius={[4, 4, 0, 0]}
+                                                                                barSize={barWidth}
+                                                                            />
+                                                                        </BarChart>
+                                                                    </ResponsiveContainer>
+                                                                </div>
+                                                            </div>
+                                                            {filteredData.length > 0 && (
+                                                                <div className="mt-2 text-center">
+                                                                    <p className="text-[8px] text-slate-500 font-bold">
+                                                                        Showing {filteredData.length} of {allData.length} months
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                                
+                                                {insight.type === 'tax' && insight.data && (
+                                                    <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase mb-3">Tax Breakdown</p>
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
+                                                                <p className="text-[8px] font-black text-orange-600 uppercase mb-1">STCG</p>
+                                                                <p className="text-xs font-black text-slate-800">{formatCurrency(insight.data.stcg)}</p>
+                                                                <p className="text-[9px] text-slate-600 font-bold">Tax (20%): {formatCurrency(insight.data.stcgTax)}</p>
+                                                            </div>
+                                                            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+                                                                <p className="text-[8px] font-black text-emerald-600 uppercase mb-1">LTCG</p>
+                                                                <p className="text-xs font-black text-slate-800">{formatCurrency(insight.data.ltcg)}</p>
+                                                                <p className="text-[9px] text-slate-600 font-bold">Tax (12.5%): {formatCurrency(insight.data.ltcgTax)}</p>
+                                                                <p className="text-[8px] text-emerald-600 font-bold mt-1">
+                                                                    Exempt: {formatCurrency(insight.data.exemptionLeft)} left
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 pt-3 border-t border-slate-200">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-[9px] font-black text-slate-600 uppercase">Total Tax Liability</span>
+                                                                <span className="text-lg font-black text-slate-800">{formatCurrency(insight.data.totalTax)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {insight.type === 'concentration' && insight.data && (
+                                                    <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase mb-3">Top 5 Holdings</p>
+                                                        <div className="space-y-2">
+                                                            {insight.data.top5Holdings.map((holding, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                                                                    <div className="flex-1">
+                                                                        <p className="text-xs font-black text-slate-800 truncate">{holding.name}</p>
+                                                                        <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                                                                            <div 
+                                                                                className="bg-amber-500 h-1.5 rounded-full transition-all"
+                                                                                style={{ width: `${Math.min(100, holding.percent)}%` }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right ml-3">
+                                                                        <p className="text-xs font-black text-slate-800">{holding.percent.toFixed(1)}%</p>
+                                                                        <p className="text-[9px] text-slate-500 font-bold">{formatCurrency(holding.value)}</p>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {insight.type === 'winloss' && insight.data && (
+                                                    <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase mb-3">Performance Breakdown</p>
+                                                        <div className="grid grid-cols-2 gap-3 mb-3">
+                                                            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+                                                                <p className="text-[8px] font-black text-emerald-600 uppercase mb-1">Winners</p>
+                                                                <p className="text-lg font-black text-slate-800">{insight.data.profitable}</p>
+                                                                <p className="text-[9px] text-slate-600 font-bold">+{formatCurrency(insight.data.profitableValue)}</p>
+                                                            </div>
+                                                            <div className="bg-rose-50 p-3 rounded-lg border border-rose-200">
+                                                                <p className="text-[8px] font-black text-rose-600 uppercase mb-1">Losers</p>
+                                                                <p className="text-lg font-black text-slate-800">{insight.data.unprofitable}</p>
+                                                                <p className="text-[9px] text-slate-600 font-bold">-{formatCurrency(insight.data.unprofitableValue)}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="pt-3 border-t border-slate-200">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-[9px] font-black text-slate-600 uppercase">Net Gain</span>
+                                                                <span className={`text-lg font-black ${insight.data.netGain >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                    {insight.data.netGain >= 0 ? '+' : ''}{formatCurrency(insight.data.netGain)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {insight.type === 'overweight' && insight.data && (
+                                                    <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase mb-3">Asset Distribution</p>
+                                                        <div className="space-y-2">
+                                                            {[
+                                                                { key: 'equity', label: 'Equities', color: 'indigo' },
+                                                                { key: 'mf', label: 'Mutual Funds', color: 'emerald' },
+                                                                { key: 'etf', label: 'ETFs', color: 'amber' },
+                                                                { key: 'cash', label: 'Cash', color: 'slate' }
+                                                            ].map(({ key, label, color }) => {
+                                                                const asset = insight.data[key];
+                                                                if (!asset || asset.value === 0) return null;
+                                                                const colorClasses = {
+                                                                    indigo: 'bg-indigo-500',
+                                                                    emerald: 'bg-emerald-500',
+                                                                    amber: 'bg-amber-500',
+                                                                    slate: 'bg-slate-500'
+                                                                };
+                                                                return (
+                                                                    <div key={key} className="space-y-1">
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="text-xs font-black text-slate-700">{label}</span>
+                                                                            <span className="text-xs font-black text-slate-800">{asset.percent.toFixed(1)}%</span>
+                                                                        </div>
+                                                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                                                            <div 
+                                                                                className={`${colorClasses[color]} h-2 rounded-full transition-all`}
+                                                                                style={{ width: `${Math.min(100, asset.percent)}%` }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {insight.type === 'singleOverweight' && insight.data && (
+                                                    <div className="mt-4 bg-white/60 p-4 rounded-xl">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase mb-3">Portfolio Concentration</p>
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-xs font-black text-slate-700">{insight.data.stock}</span>
+                                                                    <span className="text-xs font-black text-amber-600">{insight.data.percent.toFixed(1)}%</span>
+                                                                </div>
+                                                                <div className="w-full bg-slate-200 rounded-full h-3">
+                                                                    <div 
+                                                                        className="bg-amber-500 h-3 rounded-full transition-all"
+                                                                        style={{ width: `${Math.min(100, insight.data.percent)}%` }}
+                                                                    />
+                                                                </div>
+                                                                <p className="text-[9px] text-slate-500 font-bold mt-1">
+                                                                    Recommended: &lt;{insight.data.recommended}%
+                                                                </p>
+                                                            </div>
+                                                            <div className="pt-2 border-t border-slate-200">
+                                                                <p className="text-[9px] text-slate-600 font-bold">
+                                                                    Current Value: {formatCurrency(insight.data.value)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* All Insights Grid (Optional - can be shown on hover or click) */}
+                                    {stats.insights && stats.insights.length > 1 && (
+                                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            {stats.insights.map((insight, idx) => {
+                                                const Icon = insight.icon;
+                                                const isActive = idx === currentInsightIndex;
+                                                return (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => setCurrentInsightIndex(idx)}
+                                                        className={`p-3 rounded-xl border transition-all text-left ${
+                                                            isActive 
+                                                                ? 'bg-indigo-50 border-indigo-300 shadow-md' 
+                                                                : 'bg-slate-50 border-slate-200 hover:border-indigo-200'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <Icon size={14} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
+                                                            <p className={`text-[8px] font-black uppercase ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                                                {insight.title}
+                                                            </p>
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-600 font-bold truncate">{insight.description}</p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        )}
+                    </>
+                )}
+
+                {/* --- FILTER BAR --- */}
+                <section className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-1">
+                            <h3 className="font-black text-xs flex items-center gap-2 text-slate-800 uppercase tracking-widest"><Filter size={14} className="text-indigo-600" /> Account Visibility</h3>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase">Toggle accounts to aggregate views</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {accounts.map(acc => (
+                                <button
+                                    key={acc}
+                                    onClick={() => setActiveAccounts(p => p.includes(acc) ? p.filter(x=>x!==acc) : [...p, acc])}
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${
+                                        activeAccounts.includes(acc)
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                        : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'
+                                    }`}
+                                >
+                                    {acc}
+                                </button>
+                            ))}
+                            <div className="w-px h-6 bg-slate-200 mx-2 hidden md:block" />
+                            <button
+                                onClick={() => { setShowSettingsModal(true); setIsAddingWallet(false); }}
+                                className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 text-[10px] font-black uppercase flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all"
+                            >
+                                <Plus size={12}/> Manage Wallets
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* --- HOLDINGS TABLE --- */}
+                <section className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                    {/* Top Control Bar - Sticky */}
+                    <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
+                        <div className="p-6">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+                                <div>
+                                    <h3 className="font-black text-xl text-slate-800 tracking-tight mb-1">Portfolio Holdings</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">View by Asset Type</p>
+                                </div>
+                                <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:max-w-xl">
+                                    <div className="relative w-full group">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={16} />
+                                        <input
+                                            type="text"
+                                            placeholder="Search by Name, Symbol or Wallet..."
+                                            className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                                            value={tableFilter}
+                                            onChange={(e) => setTableFilter(e.target.value)}
+                                        />
+                                    </div>
+                                    <button onClick={() => { setShowAddModal(true); setTableFilter(''); }} className="w-full sm:w-auto bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shrink-0">
+                                        <Plus size={18} /> Add New
+                                    </button>
+                                </div>
+                            </div>
+                            {/* View Type Selector */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {[
+                                    { value: 'ALL', label: 'All', icon: Layers },
+                                    { value: 'STOCK', label: 'Stocks', icon: Activity },
+                                    { value: 'MF', label: 'Mutual Funds', icon: Building2 },
+                                    { value: 'ETF', label: 'ETFs', icon: TrendingUp },
+                                    { value: 'CASH', label: 'Cash', icon: Wallet }
+                                ].map(({ value, label, icon: Icon }) => {
+                                    const count = value === 'ALL'
+                                        ? processedPortfolio.filter(p => activeAccounts.includes(p.account)).length
+                                        : processedPortfolio.filter(p => p.type === value && activeAccounts.includes(p.account)).length;
+                                    return (
+                                        <button
+                                            key={value}
+                                            onClick={() => setSelectedView(value)}
+                                            className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all border-2 flex items-center gap-2 ${
+                                                selectedView === value
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                            <Icon size={16} />
+                                            {label}
+                                            <span className={`ml-1 text-[9px] px-2 py-0.5 rounded-full ${
+                                                selectedView === value
+                                                    ? 'bg-white/20 text-white'
+                                                    : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
+                                <tr>
+                                    <th className="px-8 py-5">Security</th>
+                                    <th className="px-6 py-5 text-right">Qty & Avg</th>
+                                    <th className="px-6 py-5 text-right">LTP (Edit)</th>
+                                    <th className="px-6 py-5 text-right">P&L Analysis</th>
+                                    <th className="px-8 py-5 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {selectedView === 'ALL' ? (
+                                    // Grouped view
+                                    Object.keys(groupedPortfolio).length === 0 ? (
+                                        <tr>
+                                            <td colSpan="7" className="px-8 py-20 text-center text-slate-400 italic font-medium">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Search size={40} className="text-slate-200" />
+                                                    <p>No assets match current filters.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        Object.entries(groupedPortfolio).map(([type, items]) => {
+                                            const typeLabels = {
+                                                'STOCK': { label: 'Stocks', icon: Activity, color: 'indigo' },
+                                                'MF': { label: 'Mutual Funds', icon: Building2, color: 'emerald' },
+                                                'ETF': { label: 'ETFs', icon: TrendingUp, color: 'purple' },
+                                                'CASH': { label: 'Cash', icon: Wallet, color: 'amber' }
+                                            };
+                                            const typeInfo = typeLabels[type] || { label: type, icon: Layers, color: 'slate' };
+                                            const Icon = typeInfo.icon;
+                                            const isExpanded = expandedGroups.includes(type);
+
+                                            // Calculate group-level statistics
+                                            const totalInvested = items.reduce((sum, item) => sum + item.investedValue, 0);
+                                            const totalValue = items.reduce((sum, item) => sum + item.currentValue, 0);
+                                            const totalReturn = totalValue - totalInvested;
+                                            const totalROI = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0;
+
+                                            // Calculate group XIRR by combining all transactions from all items
+                                            let groupXIRR = null;
+                                            try {
+                                                const allTransactions = [];
+                                                items.forEach(item => {
+                                                    if (item.transactions && item.transactions.length > 0) {
+                                                        item.transactions
+                                                            .filter(t => t.date && t.quantity > 0 && t.price > 0)
+                                                            .forEach(t => {
+                                                                const date = new Date(t.date);
+                                                                if (!isNaN(date.getTime())) {
+                                                                    allTransactions.push({
+                                                                        amount: -(t.quantity * t.price), // Negative for outflows
+                                                                        when: date
+                                                                    });
+                                                                }
+                                                            });
+                                                    }
+                                                });
+
+                                                // Add current value as positive inflow
+                                                if (totalValue > 0 && allTransactions.length > 0) {
+                                                    allTransactions.push({
+                                                        amount: totalValue,
+                                                        when: new Date()
+                                                    });
+
+                                                    // Check if we have both positive and negative amounts
+                                                    const hasOutflow = allTransactions.some(t => t.amount < 0);
+                                                    const hasInflow = allTransactions.some(t => t.amount > 0);
+
+                                                    if (hasOutflow && hasInflow && allTransactions.length >= 2) {
+                                                        // Sort by date (required by xirr library)
+                                                        allTransactions.sort((a, b) => a.when - b.when);
+
+                                                        // Calculate XIRR
+                                                        const xirrTransactions = allTransactions.map(t => ({
+                                                            amount: t.amount,
+                                                            when: t.when instanceof Date ? t.when : new Date(t.when)
+                                                        }));
+
+                                                        try {
+                                                            const result = xirr(xirrTransactions);
+                                                            if (result !== null && result !== undefined && !isNaN(result) && isFinite(result)) {
+                                                                groupXIRR = result * 100; // Convert to percentage
+                                                            }
+                                                        } catch (e) {
+                                                            // XIRR calculation failed, leave as null
+                                                        }
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                // XIRR calculation failed, leave as null
+                                            }
+
+                                            return (
+                                                <React.Fragment key={type}>
+                                                    {/* Group Header */}
+                                                    <tr className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => setExpandedGroups(p => p.includes(type) ? p.filter(t => t !== type) : [...p, type])}>
+                                                        <td colSpan="5" className="px-8 py-4">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`w-10 h-10 rounded-xl bg-${typeInfo.color}-100 text-${typeInfo.color}-600 flex items-center justify-center`}>
+                                                                        <Icon size={20} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <h4 className="font-black text-slate-800 text-sm uppercase tracking-tight">
+                                                                                {typeInfo.label} ({items.length})
+                                                                            </h4>
+                                                                            {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-4 mt-1">
+                                                                            <p className="text-[9px] text-slate-400 font-bold">
+                                                                                Invested: <span className="text-slate-600">{formatCurrency(totalInvested)}</span>
+                                                                            </p>
+                                                                            <p className="text-[9px] text-slate-400 font-bold">
+                                                                                Value: <span className="text-slate-600">{formatCurrency(totalValue)}</span>
+                                                                            </p>
+                                                                            <p className={`text-[9px] font-bold ${totalROI >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                ROI: <span>{totalROI >= 0 ? '+' : ''}{totalROI.toFixed(2)}%</span>
+                                                                            </p>
+                                                                            {groupXIRR !== null ? (
+                                                                                <p className={`text-[9px] font-bold ${groupXIRR >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                    XIRR: <span>{groupXIRR >= 0 ? '+' : ''}{groupXIRR.toFixed(2)}%</span>
+                                                                                </p>
+                                                                            ) : (
+                                                                                <p className="text-[9px] text-slate-300 font-bold">
+                                                                                    XIRR: N/A
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {/* Group Items */}
+                                                    {isExpanded && items.map((item) => (
+                                                        <React.Fragment key={item.id}>
+                                            <tr className={`hover:bg-indigo-50/30 transition-colors group cursor-default ${expandedAsset === item.id ? 'bg-indigo-50/50' : ''}`}>
+                                                <td className="px-8 py-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-xl ${item.type === 'STOCK' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'} flex items-center justify-center font-black text-xs`}>
+                                                            {item.symbol.substring(0, 2)}
+                                                        </div>
+                                                        <div className="max-w-[180px] sm:max-w-[250px]">
+                                                            <div className="font-black text-slate-800 uppercase tracking-tight truncate" title={item.name || item.symbol}>
+                                                                {item.name || item.symbol}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 mt-0.5">
+                                                                <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{item.account}</div>
+                                                                <div className="w-1 h-1 bg-slate-200 rounded-full" />
+                                                                <div className="text-[8px] text-slate-300 font-black uppercase">{item.symbol}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-6 text-right tabular-nums">
+                                                    <div className="font-bold text-slate-700">{item.totalQty} Units</div>
+                                                    <div className="text-[10px] text-slate-400 font-bold">@ ₹{item.avgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+                                                </td>
+                                                <td className="px-6 py-6 text-right tabular-nums">
+                                                    {editingId === item.id ? (
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <input
+                                                                autoFocus
+                                                                type="number"
+                                                                className="w-24 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-right text-xs font-bold outline-none"
+                                                                value={editValue}
+                                                                onChange={(e) => setEditValue(e.target.value)}
+                                                                onKeyDown={(e) => e.key === 'Enter' && (setMarketPrices(p => ({...p, [item.symbol]: {price: parseFloat(editValue), change:0, changePercent:0}})), setEditingId(null))}
+                                                            />
+                                                            <button onClick={() => (setMarketPrices(p => ({...p, [item.symbol]: {price: parseFloat(editValue), change:0, changePercent:0}})), setEditingId(null))} className="text-indigo-600"><Save size={16}/></button>
+                                                        </div>
+                                                    ) : (
+                                                        <div
+                                                            className="cursor-pointer group/price inline-block"
+                                                            onClick={() => { setEditingId(item.id); setEditValue(item.currentPrice); }}
+                                                        >
+                                                            <div className="font-black text-slate-800 flex items-center gap-1 justify-end">
+                                                                ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                                                <Edit3 size={10} className="text-slate-300 opacity-0 group-hover/price:opacity-100" />
+                                                            </div>
+                                                            <div className={`text-[10px] font-black ${item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-6 text-right tabular-nums">
+                                                    <div className={`font-black ${item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                        {formatCurrency(item.absReturn)}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                                        {item.absReturnPercent.toFixed(2)}% ROI
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <div className="flex items-center justify-center gap-2 relative">
+                                                        <button
+                                                            onClick={() => setExpandedAsset(expandedAsset === item.id ? null : item.id)}
+                                                            className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                            title="View History"
+                                                        >
+                                                            {expandedAsset === item.id ? <ChevronUp size={16}/> : <History size={16}/>}
+                                                        </button>
+                                                        <div className="relative asset-menu-container">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setAssetMenuOpen(assetMenuOpen === item.id ? null : item.id);
+                                                                }}
+                                                                className="p-2 text-slate-300 hover:text-slate-600 transition-colors"
+                                                                title="More Options"
+                                                            >
+                                                                <MoreVertical size={16}/>
+                                                            </button>
+                                                            {assetMenuOpen === item.id && (
+                                                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[160px] overflow-hidden">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setAssetToDelete(item);
+                                                                            setAssetMenuOpen(null);
+                                                                        }}
+                                                                        className="w-full px-4 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
+                                                                    >
+                                                                        <Trash2 size={16}/>
+                                                                        Delete Asset
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {expandedAsset === item.id && (
+                                                <tr className="bg-slate-50/50">
+                                                    <td colSpan="5" className="px-8 py-4 border-b border-slate-100">
+                                                        <div className="space-y-4">
+                                                            {/* Summary Section */}
+                                                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Invested Amount</p>
+                                                                    <p className="text-lg font-black text-slate-800">{formatCurrency(item.investedValue)}</p>
+                                                                </div>
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Value</p>
+                                                                    <p className="text-lg font-black text-indigo-600">{formatCurrency(item.currentValue)}</p>
+                                                                </div>
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Absolute Returns</p>
+                                                                    <p className={`text-lg font-black ${item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
+                                                                    </p>
+                                                                    <p className={`text-[10px] font-bold mt-1 ${item.absReturnPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                        {item.absReturnPercent >= 0 ? '+' : ''}{item.absReturnPercent.toFixed(2)}%
+                                                                    </p>
+                                                                </div>
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">XIRR</p>
+                                                                    {item.xirr !== null && item.xirr !== undefined ? (
+                                                                        <p className={`text-lg font-black ${item.xirr >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                            {item.xirr >= 0 ? '+' : ''}{item.xirr.toFixed(2)}%
+                                                                        </p>
+                                                                    ) : (
+                                                                        <div>
+                                                                            <p className="text-sm font-bold text-slate-400">N/A</p>
+                                                                            <p className="text-[8px] text-slate-300 mt-1">Check console for details</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tax Info</p>
+                                                                    {item.capitalGains ? (
+                                                                        <div className="space-y-1">
+                                                                            <p className="text-xs font-black text-rose-500">STCG: {formatCurrency(item.capitalGains.stcg)}</p>
+                                                                            <p className="text-xs font-black text-emerald-500">LTCG: {formatCurrency(item.capitalGains.ltcg)}</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className="text-sm font-bold text-slate-400">No gains</p>
+                                                                    )}
+                                                                    {item.totalDividends > 0 && (
+                                                                        <p className="text-xs font-black text-indigo-500 mt-1">Div: {formatCurrencyWithDecimals(item.totalDividends)}</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* TAX INTELLIGENCE Section */}
+                                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <ShieldAlert className="text-indigo-600" size={14} />
+                                                                    <h4 className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Tax Intelligence (India-Specific)</h4>
+                                                                </div>
+                                                                <p className="text-[8px] font-bold text-slate-500 uppercase mb-2">Tax if sold today:</p>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    {item.capitalGains && item.capitalGains.stcg > 0 ? (
+                                                                        <div className="bg-white p-2.5 rounded-lg border border-orange-200">
+                                                                            <div className="flex items-center justify-between mb-0.5">
+                                                                                <p className="text-[8px] font-black text-orange-600 uppercase">STCG</p>
+                                                                                <p className="text-[7px] text-slate-400 font-bold">20%</p>
+                                                                            </div>
+                                                                            <p className="text-sm font-black text-orange-700">
+                                                                                {formatCurrency(item.capitalGains.stcg * 0.20)}
+                                                                            </p>
+                                                                            <p className="text-[8px] text-slate-500 font-bold mt-0.5">
+                                                                                Gain: {formatCurrency(item.capitalGains.stcg)}
+                                                                            </p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                                            <div className="flex items-center justify-between mb-0.5">
+                                                                                <p className="text-[8px] font-black text-slate-400 uppercase">STCG</p>
+                                                                                <p className="text-[7px] text-slate-300 font-bold">20%</p>
+                                                                            </div>
+                                                                            <p className="text-sm font-black text-slate-300">
+                                                                                ₹0
+                                                                            </p>
+                                                                            <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                No gains
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.capitalGains && item.capitalGains.ltcg > 0 ? (
+                                                                        <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                                            <div className="flex items-center justify-between mb-0.5">
+                                                                                <p className="text-[8px] font-black text-emerald-600 uppercase">LTCG</p>
+                                                                                <p className="text-[7px] text-slate-400 font-bold">12.5%</p>
+                                                                            </div>
+                                                                            {(() => {
+                                                                                const ltcgExemption = 125000; // ₹1.25L exemption
+                                                                                const taxableLTCG = Math.max(0, item.capitalGains.ltcg - ltcgExemption);
+                                                                                const ltcgTax = taxableLTCG * 0.125;
+                                                                                const exemptionLeft = Math.max(0, ltcgExemption - item.capitalGains.ltcg);
+                                                                                return (
+                                                                                    <>
+                                                                                        <p className="text-sm font-black text-emerald-700">
+                                                                                            {formatCurrency(ltcgTax)}
+                                                                                        </p>
+                                                                                        <p className="text-[8px] text-slate-500 font-bold mt-0.5">
+                                                                                            Gain: {formatCurrency(item.capitalGains.ltcg)}
+                                                                                        </p>
+                                                                                        {exemptionLeft > 0 ? (
+                                                                                            <p className="text-[8px] text-emerald-600 font-bold mt-0.5">
+                                                                                                Exempt: {formatCurrency(exemptionLeft)}
+                                                                                            </p>
+                                                                                        ) : (
+                                                                                            <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                                Exempt used
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </>
+                                                                                );
+                                                                            })()}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                                            <div className="flex items-center justify-between mb-0.5">
+                                                                                <p className="text-[8px] font-black text-slate-400 uppercase">LTCG</p>
+                                                                                <p className="text-[7px] text-slate-300 font-bold">12.5%</p>
+                                                                            </div>
+                                                                            <p className="text-sm font-black text-slate-300">
+                                                                                ₹0
+                                                                            </p>
+                                                                            <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                No gains
+                                                                            </p>
+                                                                            <p className="text-[8px] text-emerald-600 font-bold mt-0.5">
+                                                                                Exempt: ₹1,25,000
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex justify-between items-center mb-3">
+                                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaction History ({item.transactions.length} {item.transactions.length === 1 ? 'transaction' : 'transactions'})</p>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const newTx = { id: Date.now(), price: item.currentPrice, quantity: 0, date: new Date().toISOString().split('T')[0] };
+                                                                        setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: [...a.transactions, newTx] } : a));
+                                                                        setEditingTransaction(newTx);
+                                                                    }}
+                                                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-indigo-700 transition-colors"
+                                                                >
+                                                                    <Plus size={12} className="inline mr-1"/> Add Transaction
+                                                                </button>
+                                                            </div>
+                                                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                                                    <table className="w-full text-left">
+                                                                        <thead className="bg-slate-50 sticky top-0 z-10">
+                                                                            <tr>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Quantity</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Buy Price</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Invested</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Current Value</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">P&L</th>
+                                                                                <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center w-20">Actions</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-slate-100">
+                                                                            {[...item.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).map((tx, idx) => {
+                                                                                const txPnl = (item.currentPrice - tx.price) * tx.quantity;
+                                                                                const txPnlPercent = tx.price > 0 ? ((item.currentPrice - tx.price) / tx.price) * 100 : 0;
+                                                                                const invested = tx.quantity * tx.price;
+                                                                                const currentVal = item.currentPrice * tx.quantity;
+
+                                                                                return (
+                                                                                    <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                        {editingTransaction?.id === tx.id ? (
+                                                                                            <>
+                                                                                                <td className="px-4 py-2.5">
+                                                                                                    <input
+                                                                                                        type="date"
+                                                                                                        value={editingTransaction.date}
+                                                                                                        onChange={e => setEditingTransaction({...editingTransaction, date: e.target.value})}
+                                                                                                        className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                    />
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5">
+                                                                                                    <input
+                                                                                                        type="number"
+                                                                                                        placeholder="Qty"
+                                                                                                        value={editingTransaction.quantity}
+                                                                                                        onChange={e => setEditingTransaction({...editingTransaction, quantity: parseFloat(e.target.value) || 0})}
+                                                                                                        className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                    />
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5">
+                                                                                                    <input
+                                                                                                        type="number"
+                                                                                                        placeholder="Price"
+                                                                                                        value={editingTransaction.price}
+                                                                                                        onChange={e => setEditingTransaction({...editingTransaction, price: parseFloat(e.target.value) || 0})}
+                                                                                                        className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                    />
+                                                                                                </td>
+                                                                                                <td colSpan="4" className="px-4 py-2.5">
+                                                                                                    <div className="flex gap-2 justify-end">
+                                                                                                        <button
+                                                                                                            onClick={() => {
+                                                                                                                setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: a.transactions.map(t => t.id === tx.id ? editingTransaction : t) } : a));
+                                                                                                                setEditingTransaction(null);
+                                                                                                            }}
+                                                                                                            className="px-3 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold hover:bg-emerald-700"
+                                                                                                        >
+                                                                                                            Save
+                                                                                                        </button>
+                                                                                                        <button
+                                                                                                            onClick={() => setEditingTransaction(null)}
+                                                                                                            className="px-3 py-1 bg-slate-200 text-slate-600 rounded text-[9px] font-bold hover:bg-slate-300"
+                                                                                                        >
+                                                                                                            Cancel
+                                                                                                        </button>
+                                                                                                        <button
+                                                                                                            onClick={() => {
+                                                                                                                setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: a.transactions.filter(t => t.id !== tx.id) } : a));
+                                                                                                                setEditingTransaction(null);
+                                                                                                            }}
+                                                                                                            className="px-3 py-1 bg-rose-500 text-white rounded text-[9px] font-bold hover:bg-rose-600"
+                                                                                                        >
+                                                                                                            <Trash2 size={12} className="inline"/>
+                                                                                                        </button>
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <td className="px-4 py-2.5">
+                                                                                                    <p className="text-xs font-bold text-slate-700">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right">
+                                                                                                    <p className="text-xs font-black text-slate-800 tabular-nums">{tx.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</p>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right">
+                                                                                                    <p className="text-xs font-black text-slate-800 tabular-nums">₹{tx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right">
+                                                                                                    <p className="text-xs font-black text-slate-700 tabular-nums">{formatCurrency(invested)}</p>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right">
+                                                                                                    <p className="text-xs font-black text-indigo-600 tabular-nums">{formatCurrency(currentVal)}</p>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-right">
+                                                                                                    <div className="flex flex-col items-end">
+                                                                                                        <p className={`text-xs font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                                            {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
+                                                                                                        </p>
+                                                                                                        <p className={`text-[9px] font-bold ${txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                                                            {txPnlPercent >= 0 ? '+' : ''}{txPnlPercent.toFixed(2)}%
+                                                                                                        </p>
+                                                                                                    </div>
+                                                                                                </td>
+                                                                                                <td className="px-4 py-2.5 text-center">
+                                                                                                    <button
+                                                                                                        onClick={() => setEditingTransaction({...tx})}
+                                                                                                        className="p-1.5 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                                                                        title="Edit Transaction"
+                                                                                                    >
+                                                                                                        <Edit3 size={14}/>
+                                                                                                    </button>
+                                                                                                </td>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                            {(item.dividends && item.dividends.length > 0) && (
+                                                                <div className="mt-4">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Dividends</p>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                        {item.dividends.map((div, idx) => (
+                                                                            <div key={div.id || idx} className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                                                                                {editingTransaction?.divId === div.id ? (
+                                                                                    <div className="space-y-2">
+                                                                                        <input type="date" value={editingTransaction.date} onChange={e => setEditingTransaction({...editingTransaction, date: e.target.value})} className="w-full px-2 py-1 text-[10px] border rounded" />
+                                                                                        <input type="number" step="0.01" min="0" placeholder="Amount (e.g. 15.50)" value={editingTransaction.amount === '' || editingTransaction.amount === undefined ? '' : editingTransaction.amount} onChange={e => {
+                                                                                            const val = e.target.value;
+                                                                                            setEditingTransaction({...editingTransaction, amount: val === '' ? '' : (parseFloat(val) || 0)});
+                                                                                        }} className="w-full px-2 py-1 text-[10px] border rounded" />
+                                                                                        <div className="flex gap-2">
+                                                                                            <button onClick={() => {
+                                                                                                const amount = typeof editingTransaction.amount === 'string' ? parseFloat(editingTransaction.amount) || 0 : editingTransaction.amount;
+                                                                                                setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: a.dividends.map(d => d.id === div.id ? {id: div.id, date: editingTransaction.date, amount: amount} : d) } : a));
+                                                                                                setEditingTransaction(null);
+                                                                                            }} className="flex-1 px-2 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold">Save</button>
+                                                                                            <button onClick={() => setEditingTransaction(null)} className="flex-1 px-2 py-1 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">Cancel</button>
+                                                                                            <button onClick={() => {
+                                                                                                setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: a.dividends.filter(d => d.id !== div.id) } : a));
+                                                                                                setEditingTransaction(null);
+                                                                                            }} className="px-2 py-1 bg-rose-500 text-white rounded text-[9px] font-bold"><Trash2 size={12}/></button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="flex justify-between items-center">
+                                                                                        <div>
+                                                                                            <p className="text-[10px] text-emerald-600 font-bold">{div.date}</p>
+                                                                                            <p className="text-xs font-black text-emerald-700">{formatCurrencyWithDecimals(div.amount)}</p>
+                                                                                        </div>
+                                                                                        <button onClick={() => setEditingTransaction({...div, divId: div.id})} className="p-1 text-emerald-300 hover:text-indigo-600"><Edit3 size={12}/></button>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newDiv = { id: Date.now(), amount: 0, date: new Date().toISOString().split('T')[0] };
+                                                                    setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: [...(a.dividends || []), newDiv] } : a));
+                                                                    setEditingTransaction({...newDiv, divId: newDiv.id, amount: ''});
+                                                                }}
+                                                                className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[9px] font-black uppercase"
+                                                            >
+                                                                Add Dividend
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                                        </React.Fragment>
+                                                    ))}
+                                                </React.Fragment>
+                                            );
+                                        })
+                                    )
+                                ) : (
+                                    // Single type view (flat list)
+                                    filteredPortfolio.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="px-8 py-20 text-center text-slate-400 italic font-medium">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Search size={40} className="text-slate-200" />
+                                                    <p>No assets match current filters.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredPortfolio.map((item) => (
+                                            <React.Fragment key={item.id}>
+                                                <tr className={`hover:bg-indigo-50/30 transition-colors group cursor-default ${expandedAsset === item.id ? 'bg-indigo-50/50' : ''}`}>
+                                                    <td className="px-8 py-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-10 h-10 rounded-xl ${item.type === 'STOCK' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'} flex items-center justify-center font-black text-xs`}>
+                                                                {item.symbol.substring(0, 2)}
+                                                            </div>
+                                                            <div className="max-w-[180px] sm:max-w-[250px]">
+                                                                <div className="font-black text-slate-800 uppercase tracking-tight truncate" title={item.name || item.symbol}>
+                                                                    {item.name || item.symbol}
+                                                                </div>
+                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{item.account}</div>
+                                                                    <div className="w-1 h-1 bg-slate-200 rounded-full" />
+                                                                    <div className="text-[8px] text-slate-300 font-black uppercase">{item.symbol}</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-6 text-right tabular-nums">
+                                                        <div className="font-bold text-slate-700">{item.totalQty} Units</div>
+                                                        <div className="text-[10px] text-slate-400 font-bold">@ ₹{item.avgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+                                                    </td>
+                                                    <td className="px-6 py-6 text-right tabular-nums">
+                                                        {editingId === item.id ? (
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <input
+                                                                    autoFocus
+                                                                    type="number"
+                                                                    className="w-24 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-right text-xs font-bold outline-none"
+                                                                    value={editValue}
+                                                                    onChange={(e) => setEditValue(e.target.value)}
+                                                                    onKeyDown={(e) => e.key === 'Enter' && (setMarketPrices(p => ({...p, [item.symbol]: {price: parseFloat(editValue), change:0, changePercent:0}})), setEditingId(null))}
+                                                                />
+                                                                <button onClick={() => (setMarketPrices(p => ({...p, [item.symbol]: {price: parseFloat(editValue), change:0, changePercent:0}})), setEditingId(null))} className="text-indigo-600"><Save size={16}/></button>
+                                                            </div>
+                                                        ) : (
+                                                            <div
+                                                                className="cursor-pointer group/price inline-block"
+                                                                onClick={() => { setEditingId(item.id); setEditValue(item.currentPrice); }}
+                                                            >
+                                                                <div className="font-black text-slate-800 flex items-center gap-1 justify-end">
+                                                                    ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                                                    <Edit3 size={10} className="text-slate-300 opacity-0 group-hover/price:opacity-100" />
+                                                                </div>
+                                                                <div className={`text-[10px] font-black ${item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                    {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-6 text-right tabular-nums">
+                                                        <div className={`font-black ${item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                            {formatCurrency(item.absReturn)}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                                            {item.absReturnPercent.toFixed(2)}% ROI
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-8 py-6 text-center">
+                                                        <div className="flex items-center justify-center gap-2 relative">
+                                                            <button
+                                                                onClick={() => setExpandedAsset(expandedAsset === item.id ? null : item.id)}
+                                                                className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                                title="View History"
+                                                            >
+                                                                {expandedAsset === item.id ? <ChevronUp size={16}/> : <History size={16}/>}
+                                                            </button>
+                                                            <div className="relative asset-menu-container">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setAssetMenuOpen(assetMenuOpen === item.id ? null : item.id);
+                                                                    }}
+                                                                    className="p-2 text-slate-300 hover:text-slate-600 transition-colors"
+                                                                    title="More Options"
+                                                                >
+                                                                    <MoreVertical size={16}/>
+                                                                </button>
+                                                                {assetMenuOpen === item.id && (
+                                                                    <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[160px] overflow-hidden">
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setAssetToDelete(item);
+                                                                                setAssetMenuOpen(null);
+                                                                            }}
+                                                                            className="w-full px-4 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
+                                                                        >
+                                                                            <Trash2 size={16}/>
+                                                                            Delete Asset
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {expandedAsset === item.id && (
+                                                    <tr className="bg-slate-50/50">
+                                                        <td colSpan="5" className="px-8 py-4 border-b border-slate-100">
+                                                            <div className="space-y-4">
+                                                                {/* Summary Section - Same as grouped view */}
+                                                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                                                                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Invested Amount</p>
+                                                                        <p className="text-lg font-black text-slate-800">{formatCurrency(item.investedValue)}</p>
+                                                                    </div>
+                                                                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Value</p>
+                                                                        <p className="text-lg font-black text-indigo-600">{formatCurrency(item.currentValue)}</p>
+                                                                    </div>
+                                                                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Absolute Returns</p>
+                                                                        <p className={`text-lg font-black ${item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                            {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
+                                                                        </p>
+                                                                        <p className={`text-[10px] font-bold mt-1 ${item.absReturnPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                            {item.absReturnPercent >= 0 ? '+' : ''}{item.absReturnPercent.toFixed(2)}%
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">XIRR</p>
+                                                                        {item.xirr !== null && item.xirr !== undefined ? (
+                                                                            <p className={`text-lg font-black ${item.xirr >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                {item.xirr >= 0 ? '+' : ''}{item.xirr.toFixed(2)}%
+                                                                            </p>
+                                                                        ) : (
+                                                                            <div>
+                                                                                <p className="text-sm font-bold text-slate-400">N/A</p>
+                                                                                <p className="text-[8px] text-slate-300 mt-1">Check console for details</p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tax Info</p>
+                                                                        {item.capitalGains ? (
+                                                                            <div className="space-y-1">
+                                                                                <p className="text-xs font-black text-rose-500">STCG: {formatCurrency(item.capitalGains.stcg)}</p>
+                                                                                <p className="text-xs font-black text-emerald-500">LTCG: {formatCurrency(item.capitalGains.ltcg)}</p>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <p className="text-sm font-bold text-slate-400">No gains</p>
+                                                                        )}
+                                                                        {item.totalDividends > 0 && (
+                                                                            <p className="text-xs font-black text-indigo-500 mt-1">Div: {formatCurrencyWithDecimals(item.totalDividends)}</p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* TAX INTELLIGENCE Section */}
+                                                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
+                                                                    <div className="flex items-center gap-2 mb-3">
+                                                                        <ShieldAlert className="text-indigo-600" size={14} />
+                                                                        <h4 className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Tax Intelligence (India-Specific)</h4>
+                                                                    </div>
+                                                                    <p className="text-[8px] font-bold text-slate-500 uppercase mb-2">Tax if sold today:</p>
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        {item.capitalGains && item.capitalGains.stcg > 0 ? (
+                                                                            <div className="bg-white p-2.5 rounded-lg border border-orange-200">
+                                                                                <div className="flex items-center justify-between mb-0.5">
+                                                                                    <p className="text-[8px] font-black text-orange-600 uppercase">STCG</p>
+                                                                                    <p className="text-[7px] text-slate-400 font-bold">20%</p>
+                                                                                </div>
+                                                                                <p className="text-sm font-black text-orange-700">
+                                                                                    {formatCurrency(item.capitalGains.stcg * 0.20)}
+                                                                                </p>
+                                                                                <p className="text-[8px] text-slate-500 font-bold mt-0.5">
+                                                                                    Gain: {formatCurrency(item.capitalGains.stcg)}
+                                                                                </p>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                                                <div className="flex items-center justify-between mb-0.5">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase">STCG</p>
+                                                                                    <p className="text-[7px] text-slate-300 font-bold">20%</p>
+                                                                                </div>
+                                                                                <p className="text-sm font-black text-slate-300">
+                                                                                    ₹0
+                                                                                </p>
+                                                                                <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                    No gains
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                        {item.capitalGains && item.capitalGains.ltcg > 0 ? (
+                                                                            <div className="bg-white p-2.5 rounded-lg border border-emerald-200">
+                                                                                <div className="flex items-center justify-between mb-0.5">
+                                                                                    <p className="text-[8px] font-black text-emerald-600 uppercase">LTCG</p>
+                                                                                    <p className="text-[7px] text-slate-400 font-bold">12.5%</p>
+                                                                                </div>
+                                                                                {(() => {
+                                                                                    const ltcgExemption = 125000; // ₹1.25L exemption
+                                                                                    const taxableLTCG = Math.max(0, item.capitalGains.ltcg - ltcgExemption);
+                                                                                    const ltcgTax = taxableLTCG * 0.125;
+                                                                                    const exemptionLeft = Math.max(0, ltcgExemption - item.capitalGains.ltcg);
+                                                                                    return (
+                                                                                        <>
+                                                                                            <p className="text-sm font-black text-emerald-700">
+                                                                                                {formatCurrency(ltcgTax)}
+                                                                                            </p>
+                                                                                            <p className="text-[8px] text-slate-500 font-bold mt-0.5">
+                                                                                                Gain: {formatCurrency(item.capitalGains.ltcg)}
+                                                                                            </p>
+                                                                                            {exemptionLeft > 0 ? (
+                                                                                                <p className="text-[8px] text-emerald-600 font-bold mt-0.5">
+                                                                                                    Exempt: {formatCurrency(exemptionLeft)}
+                                                                                                </p>
+                                                                                            ) : (
+                                                                                                <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                                    Exempt used
+                                                                                                </p>
+                                                                                            )}
+                                                                                        </>
+                                                                                    );
+                                                                                })()}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                                                                                <div className="flex items-center justify-between mb-0.5">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase">LTCG</p>
+                                                                                    <p className="text-[7px] text-slate-300 font-bold">12.5%</p>
+                                                                                </div>
+                                                                                <p className="text-sm font-black text-slate-300">
+                                                                                    ₹0
+                                                                                </p>
+                                                                                <p className="text-[8px] text-slate-400 font-bold mt-0.5">
+                                                                                    No gains
+                                                                                </p>
+                                                                                <p className="text-[8px] text-emerald-600 font-bold mt-0.5">
+                                                                                    Exempt: ₹1,25,000
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex justify-between items-center mb-3">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaction History ({item.transactions.length} {item.transactions.length === 1 ? 'transaction' : 'transactions'})</p>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const newTx = { id: Date.now(), price: item.currentPrice, quantity: 0, date: new Date().toISOString().split('T')[0] };
+                                                                            setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: [...a.transactions, newTx] } : a));
+                                                                            setEditingTransaction(newTx);
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-indigo-700 transition-colors"
+                                                                    >
+                                                                        <Plus size={12} className="inline mr-1"/> Add Transaction
+                                                                    </button>
+                                                                </div>
+                                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                                                    <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                                                        <table className="w-full text-left">
+                                                                            <thead className="bg-slate-50 sticky top-0 z-10">
+                                                                                <tr>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Quantity</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Buy Price</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Invested</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Current Value</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">P&L</th>
+                                                                                    <th className="px-4 py-2.5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center w-20">Actions</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-100">
+                                                                                {[...item.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).map((tx, idx) => {
+                                                                                    const txPnl = (item.currentPrice - tx.price) * tx.quantity;
+                                                                                    const txPnlPercent = tx.price > 0 ? ((item.currentPrice - tx.price) / tx.price) * 100 : 0;
+                                                                                    const invested = tx.quantity * tx.price;
+                                                                                    const currentVal = item.currentPrice * tx.quantity;
+
+                                                                                    return (
+                                                                                        <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                                                                                            {editingTransaction?.id === tx.id ? (
+                                                                                                <>
+                                                                                                    <td className="px-4 py-2.5">
+                                                                                                        <input
+                                                                                                            type="date"
+                                                                                                            value={editingTransaction.date}
+                                                                                                            onChange={e => setEditingTransaction({...editingTransaction, date: e.target.value})}
+                                                                                                            className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                        />
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5">
+                                                                                                        <input
+                                                                                                            type="number"
+                                                                                                            placeholder="Qty"
+                                                                                                            value={editingTransaction.quantity}
+                                                                                                            onChange={e => setEditingTransaction({...editingTransaction, quantity: parseFloat(e.target.value) || 0})}
+                                                                                                            className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                        />
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5">
+                                                                                                        <input
+                                                                                                            type="number"
+                                                                                                            placeholder="Price"
+                                                                                                            value={editingTransaction.price}
+                                                                                                            onChange={e => setEditingTransaction({...editingTransaction, price: parseFloat(e.target.value) || 0})}
+                                                                                                            className="w-full px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                                        />
+                                                                                                    </td>
+                                                                                                    <td colSpan="4" className="px-4 py-2.5">
+                                                                                                        <div className="flex gap-2 justify-end">
+                                                                                                            <button
+                                                                                                                onClick={() => {
+                                                                                                                    setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: a.transactions.map(t => t.id === tx.id ? editingTransaction : t) } : a));
+                                                                                                                    setEditingTransaction(null);
+                                                                                                                }}
+                                                                                                                className="px-3 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold hover:bg-emerald-700"
+                                                                                                            >
+                                                                                                                Save
+                                                                                                            </button>
+                                                                                                            <button
+                                                                                                                onClick={() => setEditingTransaction(null)}
+                                                                                                                className="px-3 py-1 bg-slate-200 text-slate-600 rounded text-[9px] font-bold hover:bg-slate-300"
+                                                                                                            >
+                                                                                                                Cancel
+                                                                                                            </button>
+                                                                                                            <button
+                                                                                                                onClick={() => {
+                                                                                                                    setPortfolio(p => p.map(a => a.id === item.id ? { ...a, transactions: a.transactions.filter(t => t.id !== tx.id) } : a));
+                                                                                                                    setEditingTransaction(null);
+                                                                                                                }}
+                                                                                                                className="px-3 py-1 bg-rose-500 text-white rounded text-[9px] font-bold hover:bg-rose-600"
+                                                                                                            >
+                                                                                                                <Trash2 size={12} className="inline"/>
+                                                                                                            </button>
+                                                                                                        </div>
+                                                                                                    </td>
+                                                                                                </>
+                                                                                            ) : (
+                                                                                                <>
+                                                                                                    <td className="px-4 py-2.5">
+                                                                                                        <p className="text-xs font-bold text-slate-700">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-right">
+                                                                                                        <p className="text-xs font-black text-slate-800 tabular-nums">{tx.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</p>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-right">
+                                                                                                        <p className="text-xs font-black text-slate-800 tabular-nums">₹{tx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-right">
+                                                                                                        <p className="text-xs font-black text-slate-700 tabular-nums">{formatCurrency(invested)}</p>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-right">
+                                                                                                        <p className="text-xs font-black text-indigo-600 tabular-nums">{formatCurrency(currentVal)}</p>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-right">
+                                                                                                        <div className="flex flex-col items-end">
+                                                                                                            <p className={`text-xs font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                                                {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
+                                                                                                            </p>
+                                                                                                            <p className={`text-[9px] font-bold ${txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                                                                {txPnlPercent >= 0 ? '+' : ''}{txPnlPercent.toFixed(2)}%
+                                                                                                            </p>
+                                                                                                        </div>
+                                                                                                    </td>
+                                                                                                    <td className="px-4 py-2.5 text-center">
+                                                                                                        <button
+                                                                                                            onClick={() => setEditingTransaction({...tx})}
+                                                                                                            className="p-1.5 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                                                                            title="Edit Transaction"
+                                                                                                        >
+                                                                                                            <Edit3 size={14}/>
+                                                                                                        </button>
+                                                                                                    </td>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                                {(item.dividends && item.dividends.length > 0) && (
+                                                                    <div className="mt-4">
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Dividends</p>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                            {item.dividends.map((div, idx) => (
+                                                                                <div key={div.id || idx} className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                                                                                    {editingTransaction?.divId === div.id ? (
+                                                                                        <div className="space-y-2">
+                                                                                            <input type="date" value={editingTransaction.date} onChange={e => setEditingTransaction({...editingTransaction, date: e.target.value})} className="w-full px-2 py-1 text-[10px] border rounded" />
+                                                                                            <input type="number" step="0.01" min="0" placeholder="Amount (e.g. 15.50)" value={editingTransaction.amount === '' || editingTransaction.amount === undefined ? '' : editingTransaction.amount} onChange={e => {
+                                                                                                const val = e.target.value;
+                                                                                                setEditingTransaction({...editingTransaction, amount: val === '' ? '' : (parseFloat(val) || 0)});
+                                                                                            }} className="w-full px-2 py-1 text-[10px] border rounded" />
+                                                                                            <div className="flex gap-2">
+                                                                                                <button onClick={() => {
+                                                                                                    const amount = typeof editingTransaction.amount === 'string' ? parseFloat(editingTransaction.amount) || 0 : editingTransaction.amount;
+                                                                                                    setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: a.dividends.map(d => d.id === div.id ? {id: div.id, date: editingTransaction.date, amount: amount} : d) } : a));
+                                                                                                    setEditingTransaction(null);
+                                                                                                }} className="flex-1 px-2 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold">Save</button>
+                                                                                                <button onClick={() => setEditingTransaction(null)} className="flex-1 px-2 py-1 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">Cancel</button>
+                                                                                                <button onClick={() => {
+                                                                                                    setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: a.dividends.filter(d => d.id !== div.id) } : a));
+                                                                                                    setEditingTransaction(null);
+                                                                                                }} className="px-2 py-1 bg-rose-500 text-white rounded text-[9px] font-bold"><Trash2 size={12}/></button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="flex justify-between items-center">
+                                                                                            <div>
+                                                                                                <p className="text-[10px] text-emerald-600 font-bold">{div.date}</p>
+                                                                                                <p className="text-xs font-black text-emerald-700">{formatCurrencyWithDecimals(div.amount)}</p>
+                                                                                            </div>
+                                                                                            <button onClick={() => setEditingTransaction({...div, divId: div.id})} className="p-1 text-emerald-300 hover:text-indigo-600"><Edit3 size={12}/></button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const newDiv = { id: Date.now(), amount: 0, date: new Date().toISOString().split('T')[0] };
+                                                                        setPortfolio(p => p.map(a => a.id === item.id ? { ...a, dividends: [...(a.dividends || []), newDiv] } : a));
+                                                                        setEditingTransaction({...newDiv, divId: newDiv.id, amount: ''});
+                                                                    }}
+                                                                    className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[9px] font-black uppercase"
+                                                                >
+                                                                    Add Dividend
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        ))
+                                    )
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+
+            {/* --- ADD ASSET MODAL --- */}
+            {showAddModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+                    <div className="bg-white w-full max-w-md rounded-[3.5rem] shadow-2xl overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Add Investment</h2>
+                            <button onClick={()=>setShowAddModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24}/></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Account Wallet</label>
+                                <select
+                                    className="w-full px-5 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700"
+                                    value={selectedAccount}
+                                    onChange={e=>setSelectedAccount(e.target.value)}
+                                >
+                                    {accounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
+                                </select>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Asset Type</label>
+                                <select
+                                    className="w-full px-5 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700"
+                                    value={selectedAssetType}
+                                    onChange={e=>setSelectedAssetType(e.target.value)}
+                                >
+                                    <option value="STOCK">Stock</option>
+                                    <option value="MF">Mutual Fund</option>
+                                    <option value="ETF">ETF</option>
+                                    <option value="CASH">Cash</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-1 relative">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Symbol / Asset Search</label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <input
+                                            type="text"
+                                            placeholder={
+                                                selectedAssetType === 'STOCK' ? 'Type stock name or symbol (e.g. RELIANCE, TCS...)' :
+                                                selectedAssetType === 'ETF' ? 'Type ETF name or symbol (e.g. NIFTYBEES...)' :
+                                                selectedAssetType === 'MF' ? 'Type scheme name (e.g. Quant, Parag...)' :
+                                                'Type asset name or symbol'
+                                            }
+                                            className="w-full px-5 py-4 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold uppercase pr-10"
+                                            value={searchQuery}
+                                            onChange={e=>{
+                                                const value = e.target.value;
+                                                setSearchQuery(value);
+                                                if (value === '') {
+                                                    setSelectedAssetName('');
+                                                    setSearchResults([]);
+                                                }
+                                            }}
+                                            onFocus={() => {
+                                                // Show results if query exists
+                                                if (searchQuery.length >= 2) {
+                                                    // Trigger search if needed
+                                                }
+                                            }}
+                                        />
+                                        {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-slate-400" size={16} />}
+                                        {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" title="No results found">
+                                                <SearchIcon size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => handleVerifySymbol()}
+                                        disabled={verifyLoading || !searchQuery}
+                                        className="px-4 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-2xl hover:bg-indigo-100 transition-all disabled:opacity-50"
+                                    >
+                                        <SearchIcon size={18} />
+                                    </button>
+                                </div>
+
+                                {searchResults.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-indigo-200 rounded-2xl shadow-2xl z-[200] overflow-hidden max-h-64 overflow-y-auto">
+                                        <div className="p-2 bg-indigo-50 border-b border-indigo-100">
+                                            <p className="text-[9px] font-black text-indigo-600 uppercase">{searchResults.length} result{searchResults.length > 1 ? 's' : ''} found</p>
+                                        </div>
+                                        {searchResults.map((result, idx) => (
+                                            <button
+                                                key={result.schemeCode || result.symbol || `result-${idx}`}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleSelectResult(result);
+                                                }}
+                                                className="w-full px-5 py-3 text-left hover:bg-indigo-50 active:bg-indigo-100 flex items-center gap-3 border-b border-slate-100 last:border-0 transition-colors cursor-pointer"
+                                            >
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                                                    result.searchType === 'MF'
+                                                        ? 'bg-emerald-100 text-emerald-600'
+                                                        : 'bg-indigo-100 text-indigo-600'
+                                                }`}>
+                                                    {result.searchType === 'MF' ? <Building2 size={18} /> : <Activity size={18} />}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-black text-slate-800 truncate leading-tight">
+                                                        {result.schemeName || result.name || 'Unknown'}
+                                                    </p>
+                                                    <p className="text-[9px] text-slate-500 font-bold tracking-widest mt-0.5 uppercase">
+                                                        {result.searchType === 'MF'
+                                                            ? `Code: ${result.schemeCode}`
+                                                            : `Symbol: ${result.symbol}`}
+                                                    </p>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-lg z-[200] p-4">
+                                        <p className="text-xs text-slate-400 text-center">No results found. Try a different search term.</p>
+                                    </div>
+                                )}
+
+                                {selectedAssetName && (
+                                    <div className="mt-2 bg-indigo-50 border border-indigo-100 p-2 rounded-xl">
+                                        <p className="text-[10px] font-black text-indigo-600 uppercase leading-tight">Selected: {selectedAssetName}</p>
+                                    </div>
+                                )}
+
+                                {previewPrice && (
+                                    <p className={`text-[10px] mt-2 font-black uppercase px-2 py-1 rounded-md w-fit ${previewPrice === 'Invalid' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                        {previewPrice === 'Invalid' ? 'Ticker Not Found' : `Current Price/NAV: ₹${previewPrice}`}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Quantity</label>
+                                    <input type="number" placeholder="0" className="w-full px-5 py-4 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold" value={quantity} onChange={e=>setQuantity(e.target.value)} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Buy Price (₹)</label>
+                                    <input type="number" placeholder="0" className="w-full px-5 py-4 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold" value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Date</label>
+                                <input type="date" className="w-full px-5 py-4 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold" value={buyDate} onChange={e=>setBuyDate(e.target.value)} />
+                            </div>
+
+                            {selectedAssetType === 'STOCK' && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Sector (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. IT, Banking, Pharma..."
+                                        className="w-full px-5 py-4 bg-slate-50 rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold"
+                                        value={sector}
+                                        onChange={e=>setSector(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            <button
+                                onClick={handleAddAsset}
+                                disabled={addStatus==='loading'}
+                                className={`w-full py-5 rounded-[2rem] font-black text-white shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2 ${addStatus==='success' ? 'bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                            >
+                                {addStatus==='loading' ? <RefreshCw className="animate-spin" size={20}/> : <Plus size={20}/>}
+                                {addStatus==='success' ? 'Added Successfully' : 'Add to Portfolio'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- SETTINGS MODAL --- */}
+            {showSettingsModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+                    <div className="bg-white w-full max-w-lg rounded-[3.5rem] shadow-2xl overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none">Settings</h2>
+                            <button onClick={()=>setShowSettingsModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24}/></button>
+                        </div>
+                        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
+                            <div className="space-y-4">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Wallet size={12}/> Wallet Management</h3>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {accounts.map(acc => (
+                                        <div key={acc} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] group">
+                                            <span className="text-sm font-bold text-slate-700">{acc}</span>
+                                            <button
+                                                onClick={() => setWalletToDelete(acc)}
+                                                className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                title="Delete Wallet"
+                                            >
+                                                <Trash2 size={18}/>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {isAddingWallet ? (
+                                        <div className="flex gap-2 p-2 bg-indigo-50 border border-indigo-100 rounded-[1.5rem]">
+                                            <input
+                                                autoFocus
+                                                className="flex-1 px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-bold outline-none"
+                                                placeholder="Wallet name..."
+                                                value={newWalletName}
+                                                onChange={e=>setNewWalletName(e.target.value)}
+                                                onKeyDown={e=>e.key==='Enter' && handleConfirmAddWallet()}
+                                            />
+                                            <button onClick={handleConfirmAddWallet} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg"><Check size={20}/></button>
+                                            <button onClick={()=>setIsAddingWallet(false)} className="text-slate-400 p-2"><X size={20}/></button>
+                                        </div>
+                                    ) : (
+                                        <button onClick={()=>setIsAddingWallet(true)} className="p-4 border-2 border-dashed border-slate-200 rounded-[1.5rem] text-sm font-black text-slate-400 hover:border-indigo-300 hover:text-indigo-600 flex items-center justify-center gap-2 transition-all uppercase tracking-widest">
+                                            <FolderPlus size={18}/> New Wallet
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 pt-4 border-t border-slate-100">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><FileJson size={12}/> Data Maintenance</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => handleExport('json')}
+                                        className="flex items-center justify-center gap-3 p-5 bg-indigo-50 text-indigo-700 rounded-3xl hover:bg-indigo-100 transition-all font-black text-xs uppercase shadow-sm"
+                                    >
+                                        <Download size={18}/> Export JSON
+                                    </button>
+                                    <label className="flex items-center justify-center gap-3 p-5 bg-slate-100 text-slate-600 rounded-3xl hover:bg-slate-200 transition-all font-black text-xs uppercase cursor-pointer">
+                                        <Upload size={18}/> Import Data
+                                        <input type="file" className="hidden" accept=".json,.csv,.xlsx,.xls" onChange={handleImport} />
+                                    </label>
+                                    <p className="text-[9px] text-slate-400 text-center">Supports: JSON, CSV (Zerodha), Excel</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => handleExport('csv')}
+                                        className="flex items-center justify-center gap-3 p-5 bg-emerald-50 text-emerald-700 rounded-3xl hover:bg-emerald-100 transition-all font-black text-xs uppercase shadow-sm"
+                                    >
+                                        <Download size={18}/> Export CSV
+                                    </button>
+                                    <button
+                                        onClick={() => handleExport('excel')}
+                                        className="flex items-center justify-center gap-3 p-5 bg-blue-50 text-blue-700 rounded-3xl hover:bg-blue-100 transition-all font-black text-xs uppercase shadow-sm"
+                                    >
+                                        <Download size={18}/> Export Excel
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 pt-4 border-t border-slate-100">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Activity size={12}/> Reports & Analytics</h3>
+                                <button
+                                    onClick={() => { setShowReportsModal(true); setShowSettingsModal(false); }}
+                                    className="w-full flex items-center justify-center gap-3 p-5 bg-indigo-600 text-white rounded-3xl hover:bg-indigo-700 transition-all font-black text-xs uppercase shadow-lg"
+                                >
+                                    <Activity size={18}/> View Reports
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- REPORTS MODAL --- */}
+            {showReportsModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+                    <div className="bg-white w-full max-w-4xl rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none">Portfolio Reports</h2>
+                            <button onClick={()=>setShowReportsModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={24}/></button>
+                        </div>
+                        <div className="p-8 space-y-8 overflow-y-auto">
+                            {/* Portfolio XIRR */}
+                            {stats.portfolioXIRR !== null && (
+                                <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+                                    <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2">Portfolio XIRR</h3>
+                                    <p className="text-4xl font-black text-indigo-700">{stats.portfolioXIRR.toFixed(2)}%</p>
+                                </div>
+                            )}
+
+                            {/* Year-wise Summary */}
+                            <div className="space-y-4">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Year-wise Investment Summary</h3>
+                                <div className="bg-slate-50 rounded-2xl overflow-hidden border border-slate-200">
+                                    <table className="w-full">
+                                        <thead className="bg-slate-100">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-600 uppercase">Year</th>
+                                                <th className="px-4 py-3 text-right text-[10px] font-black text-slate-600 uppercase">Invested</th>
+                                                <th className="px-4 py-3 text-right text-[10px] font-black text-slate-600 uppercase">Dividends</th>
+                                                <th className="px-4 py-3 text-right text-[10px] font-black text-slate-600 uppercase">Transactions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {getYearWiseSummary().map((year, idx) => (
+                                                <tr key={idx} className="hover:bg-white">
+                                                    <td className="px-4 py-3 font-bold text-slate-700">{year.year}</td>
+                                                    <td className="px-4 py-3 text-right font-black text-slate-800">{formatCurrency(year.invested)}</td>
+                                                    <td className="px-4 py-3 text-right font-black text-emerald-600">{formatCurrencyWithDecimals(year.dividends)}</td>
+                                                    <td className="px-4 py-3 text-right font-bold text-slate-600">{year.transactions}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Sector Exposure */}
+                            {Object.keys(stats.sectorExposure).length > 0 && (
+                                <div className="space-y-4">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sector-wise Exposure</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {Object.entries(stats.sectorExposure)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .map(([sector, value]) => (
+                                                <div key={sector} className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center">
+                                                    <span className="font-black text-slate-700">{sector}</span>
+                                                    <span className="font-black text-indigo-600">{formatCurrency(value)}</span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Capital Gains Summary */}
+                            <div className="space-y-4">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Capital Gains Summary</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100">
+                                        <p className="text-[10px] font-black text-rose-600 uppercase mb-2">Short Term (STCG)</p>
+                                        <p className="text-2xl font-black text-rose-700">{formatCurrency(stats.totalSTCG)}</p>
+                                    </div>
+                                    <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
+                                        <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">Long Term (LTCG)</p>
+                                        <p className="text-2xl font-black text-emerald-700">{formatCurrency(stats.totalLTCG)}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Total Dividends */}
+                            {stats.totalDividends > 0 && (
+                                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                                    <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">Total Dividends Received</h3>
+                                    <p className="text-3xl font-black text-emerald-700">{formatCurrencyWithDecimals(stats.totalDividends)}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- DELETE ASSET CONFIRMATION --- */}
+            {assetToDelete && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-sm:w-full max-w-sm rounded-[3rem] p-8 shadow-2xl space-y-6">
+                        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto">
+                            <ShieldAlert size={32} />
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight">Delete Asset?</h2>
+                            <p className="text-sm text-slate-500 font-medium">
+                                This will permanently delete <span className="font-bold text-slate-700">"{assetToDelete.name || assetToDelete.symbol}"</span> and all its transaction history.
+                            </p>
+                            <p className="text-xs text-slate-400 font-bold">
+                                Current Value: {formatCurrency((assetToDelete.currentValue || assetToDelete.totalQty * (marketPrices[assetToDelete.symbol]?.price || assetToDelete.avgPrice)) || 0)}
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setAssetToDelete(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase">Cancel</button>
+                            <button
+                                onClick={() => {
+                                    setPortfolio(p => p.filter(x => x.id !== assetToDelete.id));
+                                    setAssetToDelete(null);
+                                }}
+                                className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold text-xs uppercase shadow-lg shadow-rose-100"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- DELETE WALLET CONFIRMATION --- */}
+            {walletToDelete && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-sm:w-full max-w-sm rounded-[3rem] p-8 shadow-2xl space-y-6">
+                        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto">
+                            <ShieldAlert size={32} />
+                        </div>
+                        <div className="text-center space-y-2">
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight">Remove Wallet?</h2>
+                            <p className="text-sm text-slate-500 font-medium">This will permanently delete <span className="font-bold text-slate-700">"{walletToDelete}"</span> and all its holdings.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setWalletToDelete(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase">Cancel</button>
+                            <button
+                                onClick={() => {
+                                    setAccounts(accounts.filter(a => a !== walletToDelete));
+                                    setPortfolio(portfolio.filter(p => p.account !== walletToDelete));
+                                    setActiveAccounts(activeAccounts.filter(a => a !== walletToDelete));
+                                    setWalletToDelete(null);
+                                }}
+                                className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-bold text-xs uppercase shadow-lg shadow-rose-100"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default App;
