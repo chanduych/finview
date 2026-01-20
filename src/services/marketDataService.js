@@ -1,16 +1,16 @@
 import { ALPHA_VANTAGE_API_KEY } from '../constants/appConfig';
 
 /**
- * Fetches NSE stock data using Vite proxy (dev) or direct API (prod)
+ * Fetches NSE stock data using Vercel serverless function (works in both dev and prod)
  * @param {string} symbol - Clean symbol (e.g., "RELIANCE", "TCS")
  * @returns {Promise<Object|null>} Market data object or null
  */
 const fetchNSEData = async (symbol) => {
     try {
-        console.log(`Fetching NSE data for ${symbol} via Vite proxy...`);
+        console.log(`Fetching NSE data for ${symbol} via Vercel API...`);
 
-        // Use Vite dev proxy - /api/nse proxies to https://www.nseindia.com
-        const response = await fetch(`/api/nse/api/quote-equity?symbol=${encodeURIComponent(symbol)}`);
+        // Use Vercel serverless function - works in both dev and production
+        const response = await fetch(`/api/nse?symbol=${encodeURIComponent(symbol)}`);
 
         if (!response.ok) {
             console.log(`NSE API failed for ${symbol}: ${response.status}`);
@@ -59,7 +59,8 @@ const fetchNSEData = async (symbol) => {
 export const getMarketData = async (symbol, type, options = {}) => {
     try {
         if (type === 'MF') {
-            const res = await fetch(`/api/mf/mf/${symbol}`);
+            // Use Vercel serverless function for Mutual Fund data
+            const res = await fetch(`/api/mf?schemeCode=${encodeURIComponent(symbol)}`);
             const data = await res.json();
             if (!data.data?.[0]) return null;
             const nav = parseFloat(data.data[0].nav);

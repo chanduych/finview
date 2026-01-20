@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Favicons</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #4F46E5;
+            margin-top: 0;
+        }
+        canvas {
+            display: none;
+        }
+        .preview {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        .preview-item {
+            text-align: center;
+        }
+        .preview-item img {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        .preview-item p {
+            margin: 10px 0 0 0;
+            font-size: 12px;
+            color: #666;
+        }
+        button {
+            background: #4F46E5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #4338CA;
+        }
+        .instructions {
+            background: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #92400E;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 Favicon Generator</h1>
+
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Click "Generate All Favicons" button below</li>
+                <li>Right-click on each generated image preview</li>
+                <li>Select "Save Image As..."</li>
+                <li>Save with the exact filename shown below each image</li>
+                <li>Place all files in the <code>/public</code> folder of your project</li>
+            </ol>
+        </div>
+
+        <button onclick="generateAllFavicons()">Generate All Favicons</button>
+
+        <div class="preview" id="preview"></div>
+    </div>
+
+    <script>
+        const svgContent = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="32" fill="#4F46E5"/>
+                <path d="M 12 45 L 20 38 L 28 42 L 36 28 L 44 32 L 52 18"
+                      stroke="white"
+                      stroke-width="4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      fill="none"/>
+                <circle cx="12" cy="45" r="3" fill="white"/>
+                <circle cx="20" cy="38" r="3" fill="white"/>
+                <circle cx="28" cy="42" r="3" fill="white"/>
+                <circle cx="36" cy="28" r="3" fill="white"/>
+                <circle cx="44" cy="32" r="3" fill="white"/>
+                <circle cx="52" cy="18" r="3" fill="white"/>
+                <path d="M 52 18 L 48 22 M 52 18 L 56 22"
+                      stroke="white"
+                      stroke-width="3"
+                      stroke-linecap="round"/>
+            </svg>
+        `;
+
+        function generateFavicon(size, filename) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                const img = new Image();
+                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+
+                img.onload = function() {
+                    ctx.drawImage(img, 0, 0, size, size);
+                    URL.revokeObjectURL(url);
+
+                    const dataUrl = canvas.toDataURL('image/png');
+                    resolve({ dataUrl, filename, size });
+                };
+
+                img.src = url;
+            });
+        }
+
+        async function generateAllFavicons() {
+            const preview = document.getElementById('preview');
+            preview.innerHTML = '<p>Generating favicons...</p>';
+
+            const sizes = [
+                { size: 16, filename: 'favicon-16x16.png' },
+                { size: 32, filename: 'favicon-32x32.png' },
+                { size: 180, filename: 'apple-touch-icon.png' },
+                { size: 192, filename: 'android-chrome-192x192.png' },
+                { size: 512, filename: 'android-chrome-512x512.png' }
+            ];
+
+            preview.innerHTML = '';
+
+            for (const config of sizes) {
+                const result = await generateFavicon(config.size, config.filename);
+
+                const previewItem = document.createElement('div');
+                previewItem.className = 'preview-item';
+
+                const img = document.createElement('img');
+                img.src = result.dataUrl;
+                img.width = Math.min(config.size, 128);
+                img.height = Math.min(config.size, 128);
+                img.alt = result.filename;
+
+                const label = document.createElement('p');
+                label.innerHTML = `<strong>${result.filename}</strong><br>${result.size}×${result.size}px`;
+
+                previewItem.appendChild(img);
+                previewItem.appendChild(label);
+                preview.appendChild(previewItem);
+            }
+
+            const note = document.createElement('div');
+            note.style.cssText = 'margin-top: 20px; padding: 15px; background: #DBEAFE; border-radius: 6px; color: #1E40AF;';
+            note.innerHTML = '<strong>✅ Done!</strong> Right-click each image above and save with the exact filename shown.';
+            preview.appendChild(note);
+        }
+    </script>
+</body>
+</html>
