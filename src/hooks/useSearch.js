@@ -2,62 +2,41 @@ import { useState, useEffect } from 'react';
 import { POPULAR_STOCKS } from '../constants/stockData';
 
 /**
- * Search stocks using Yahoo Finance API
- * Direct API call - Yahoo allows CORS for search endpoint
+ * Search stocks using NSE autocomplete API via Vite proxy
  */
-const searchYahooFinance = async (query) => {
+const searchNSEStocks = async (query) => {
   try {
-    // Direct Yahoo Finance search - simpler URL that works
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
+    console.log('🔍 Searching NSE for:', query);
 
-    console.log('🔍 Fetching from Yahoo:', url);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
+    // Use Vite proxy for NSE autocomplete
+    const response = await fetch(`/api/nse/api/search/autocomplete?q=${encodeURIComponent(query)}`);
 
     if (!response.ok) {
-      console.warn('❌ Yahoo Finance returned:', response.status);
+      console.warn('❌ NSE search returned:', response.status);
       return [];
     }
 
     const data = await response.json();
-    console.log('🔍 Raw Yahoo data:', data);
+    console.log('🔍 NSE search data:', data);
 
-    const quotes = data?.quotes || [];
+    // NSE returns symbols array with symbol and symbol_info
+    const symbols = data?.symbols || [];
 
-    // Filter for Indian stocks (NSE/BSE) and format results
-    const indianStocks = quotes
-      .filter(q => {
-        const exchange = q.exchange?.toUpperCase();
-        const symbol = q.symbol || '';
-        const isIndianStock = (
-          exchange === 'NSI' ||
-          exchange === 'NSE' ||
-          exchange === 'BOM' ||
-          exchange === 'BSE' ||
-          symbol.includes('.NS') ||
-          symbol.includes('.BO')
-        );
-        console.log(`Stock: ${symbol}, Exchange: ${exchange}, Indian: ${isIndianStock}`);
-        return isIndianStock;
-      })
-      .map(q => ({
-        symbol: q.symbol?.replace('.NS', '').replace('.BO', ''),
-        name: q.longname || q.shortname || q.symbol,
-        exchange: (q.exchange === 'BOM' || q.exchange === 'BSE' || q.symbol?.includes('.BO')) ? 'BSE' : 'NSE',
-        searchType: 'STOCK'
+    const results = symbols
+      .filter(s => s.symbol && s.result_sub_type === 'equity') // Filter only equity stocks
+      .slice(0, 10) // Limit to top 10 results
+      .map(s => ({
+        symbol: s.symbol,
+        name: s.symbol_info || s.symbol,
+        exchange: 'NSE',
+        searchType: 'STOCK' // Ensure it's marked as STOCK, not CUSTOM
       }));
 
-    console.log('✅ Indian stocks found:', indianStocks.length);
-    return indianStocks;
+    console.log('✅ NSE stocks found:', results.length, results);
+    return results;
 
   } catch (error) {
-    console.error('❌ Yahoo Finance search error:', error);
+    console.error('❌ NSE search error:', error);
     return [];
   }
 };
@@ -65,9 +44,10 @@ const searchYahooFinance = async (query) => {
 /**
  * Custom hook for asset search functionality
  * @param {string} selectedAssetType - Current asset type (STOCK, MF, ETF, CASH)
+ * @param {boolean} isSelecting - Flag to prevent search during result selection
  * @returns {Object} Search state and methods
  */
-export const useSearch = (selectedAssetType) => {
+export const useSearch = (selectedAssetType, isSelecting = false) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -75,9 +55,22 @@ export const useSearch = (selectedAssetType) => {
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       const query = searchQuery.trim();
-      console.log('🔍 Search triggered:', { query, selectedAssetType, queryLength: query.length });
+      console.log('🔍 Search triggered:', { query, selectedAssetType, queryLength: query.length, isSelecting });
+
+      // Don't search if we're in the middle of selecting a result
+      if (isSelecting) {
+        console.log('⏸️ Search blocked: selection in progress');
+        return;
+      }
 
       if (query.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      // Don't search if query has exchange suffix (means it's already selected)
+      if (query.match(/\.(NS|NSE|BO|BSE)$/i)) {
+        console.log('⏸️ Search blocked: query has exchange suffix (already selected)');
         setSearchResults([]);
         return;
       }
@@ -90,9 +83,7 @@ export const useSearch = (selectedAssetType) => {
         if (/^\d+$/.test(query) || selectedAssetType === 'MF') {
           console.log('🔍 Searching MF API for:', query);
           try {
-            const url = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`;
-            console.log('🔍 Fetching from:', url);
-            const response = await fetch(url);
+            const response = await fetch(`/api/mf/mf/search?q=${encodeURIComponent(query)}`);
             console.log('🔍 MF API response status:', response.status, response.ok);
 
             if (response.ok) {
@@ -120,18 +111,18 @@ export const useSearch = (selectedAssetType) => {
             setSearchResults([]);
           }
         } else {
-          // For stocks/ETFs: Search Yahoo Finance with fallback to local
-          console.log('🔍 Searching Yahoo Finance for:', query);
+          // For stocks/ETFs: Search NSE API with fallback to local
+          console.log('🔍 Searching NSE API for:', query);
 
-          const yahooResults = await searchYahooFinance(query);
-          console.log('🔍 Yahoo Finance results:', yahooResults.length);
+          const nseResults = await searchNSEStocks(query);
+          console.log('🔍 NSE search results:', nseResults.length);
 
-          if (yahooResults.length > 0) {
-            console.log('✅ Setting Yahoo Finance results:', yahooResults);
-            setSearchResults(yahooResults.slice(0, 10));
+          if (nseResults.length > 0) {
+            console.log('✅ Setting NSE search results:', nseResults);
+            setSearchResults(nseResults);
           } else {
-            // Fallback to local search if Yahoo fails
-            console.log('🔍 Yahoo failed, trying local fallback');
+            // Fallback to local search if NSE fails
+            console.log('🔍 NSE failed, trying local fallback');
             const localMatches = POPULAR_STOCKS.filter(stock =>
               stock.symbol.toUpperCase().includes(upperQuery) ||
               stock.name.toUpperCase().includes(upperQuery)
@@ -147,12 +138,12 @@ export const useSearch = (selectedAssetType) => {
               console.log('✅ Setting local fallback results:', results);
               setSearchResults(results);
             } else {
-              console.log('⚠️ No matches anywhere, showing custom symbol option');
+              console.log('⚠️ No matches anywhere, allowing direct symbol entry');
               setSearchResults([{
                 symbol: upperQuery,
-                name: `Custom Symbol: ${upperQuery}`,
+                name: upperQuery,
                 exchange: 'NSE',
-                searchType: 'CUSTOM'
+                searchType: 'STOCK' // Changed from CUSTOM to STOCK
               }]);
             }
           }
@@ -167,7 +158,7 @@ export const useSearch = (selectedAssetType) => {
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, selectedAssetType]);
+  }, [searchQuery, selectedAssetType, isSelecting]);
 
   return {
     searchQuery,

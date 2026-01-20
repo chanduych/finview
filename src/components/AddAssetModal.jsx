@@ -49,6 +49,7 @@ const AddAssetModal = ({
     const [addStatus, setAddStatus] = useState('idle'); // 'idle', 'loading', 'success'
     const [verifyLoading, setVerifyLoading] = useState(false);
     const [previewPrice, setPreviewPrice] = useState(null);
+    const [isSelecting, setIsSelecting] = useState(false); // Flag to prevent search during selection
 
     // Search hook
     const {
@@ -57,7 +58,7 @@ const AddAssetModal = ({
         searchResults,
         setSearchResults,
         isSearching
-    } = useSearch(selectedAssetType);
+    } = useSearch(selectedAssetType, isSelecting);
 
     if (!isOpen) return null;
 
@@ -89,20 +90,33 @@ const AddAssetModal = ({
 
     // Handle search result selection
     const handleSelectResult = async (result) => {
+        // Clear search results IMMEDIATELY before anything else
+        setSearchResults([]);
+
         try {
+            // Set flag to prevent search from re-triggering
+            setIsSelecting(true);
+
             const resultData = await handleSelectResultService(result);
 
+            // Batch all updates together
             setSearchQuery(resultData.symbol);
             setSelectedAssetName(resultData.name);
             setSelectedAssetType(resultData.type);
-            setSearchResults([]);
 
             if (resultData.data) {
                 setPreviewPrice(resultData.data.price);
                 setBuyPrice(resultData.data.price.toString());
             }
+
+            // Keep blocking for 1 second to ensure no search triggers
+            setTimeout(() => {
+                setIsSelecting(false);
+            }, 1000);
         } catch (error) {
             console.error('Select result error:', error);
+            setSearchResults([]);
+            setIsSelecting(false);
         }
     };
 
@@ -307,7 +321,7 @@ const AddAssetModal = ({
                         )}
 
                         {/* No Results Message */}
-                        {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                        {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && !selectedAssetName && (
                             <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl md:rounded-2xl shadow-lg z-[200] p-4">
                                 <p className="text-xs text-slate-400 text-center">
                                     No results found. Try a different search term.

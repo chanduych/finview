@@ -1,12 +1,52 @@
 import { ALPHA_VANTAGE_API_KEY } from '../constants/appConfig';
 
 /**
+ * Fetches NSE stock data using Vite proxy (dev) or direct API (prod)
+ * @param {string} symbol - Clean symbol (e.g., "RELIANCE", "TCS")
+ * @returns {Promise<Object|null>} Market data object or null
+ */
+const fetchNSEData = async (symbol) => {
+    try {
+        console.log(`Fetching NSE data for ${symbol} via Vite proxy...`);
+
+        // Use Vite dev proxy - /api/nse proxies to https://www.nseindia.com
+        const response = await fetch(`/api/nse/api/quote-equity?symbol=${encodeURIComponent(symbol)}`);
+
+        if (!response.ok) {
+            console.log(`NSE API failed for ${symbol}: ${response.status}`);
+            return null;
+        }
+
+        const data = await response.json();
+
+        if (data?.priceInfo) {
+            const priceInfo = data.priceInfo;
+            console.log(`✅ NSE API success for ${symbol}`);
+            return {
+                price: parseFloat(priceInfo.lastPrice),
+                change: parseFloat(priceInfo.change),
+                changePercent: parseFloat(priceInfo.pChange),
+                name: data.info?.companyName || symbol,
+                timestamp: Date.now(),
+                source: 'NSE'
+            };
+        }
+
+        console.log(`NSE API returned no price info for ${symbol}`);
+        return null;
+    } catch (error) {
+        console.log(`NSE API error for ${symbol}:`, error.message);
+        return null;
+    }
+};
+
+
+/**
  * Fetches market data for a given symbol from multiple data sources.
  *
  * Priority order for STOCK/ETF:
- * 1. NSE API (real-time, NSE stocks only)
- * 2. Yahoo Finance (real-time, both NSE and BSE)
- * 3. Alpha Vantage (15-20 min delay, last resort)
+ * 1. NSE API (real-time, works for both NSE and BSE stocks!) - PRIMARY
+ * 2. Mutual Fund API (for MF)
  *
  * @param {string} symbol - The stock/MF/ETF symbol
  * @param {string} type - Asset type: 'STOCK', 'ETF', 'MF', or 'CASH'
@@ -14,12 +54,12 @@ import { ALPHA_VANTAGE_API_KEY } from '../constants/appConfig';
  * @param {boolean} options.isBSE - Whether the symbol is from BSE
  * @param {boolean} options.isNSE - Whether the symbol is from NSE
  * @param {string} options.originalSymbol - Original symbol with exchange suffix
- * @returns {Promise<Object|null>} Market data object with price, change, changePercent, name, timestamp, and delayed flag
+ * @returns {Promise<Object|null>} Market data object with price, change, changePercent, name, timestamp
  */
 export const getMarketData = async (symbol, type, options = {}) => {
     try {
         if (type === 'MF') {
-            const res = await fetch(`https://api.mfapi.in/mf/${symbol}`);
+            const res = await fetch(`/api/mf/mf/${symbol}`);
             const data = await res.json();
             if (!data.data?.[0]) return null;
             const nav = parseFloat(data.data[0].nav);
@@ -28,95 +68,24 @@ export const getMarketData = async (symbol, type, options = {}) => {
                 price: nav,
                 change: nav - prevNav,
                 changePercent: prevNav !== 0 ? ((nav - prevNav) / prevNav) * 100 : 0,
-                name: data.meta.scheme_name
+                name: data.meta.scheme_name,
+                source: 'MFAPI'
             };
         } else if (type === 'CASH') {
-            return { price: 1, change: 0, changePercent: 0, name: symbol };
+            return { price: 1, change: 0, changePercent: 0, name: symbol, source: 'CASH' };
         } else {
-            // STOCK or ETF - Handle symbol format properly
-            // Prioritize real-time sources (NSE/Yahoo) over delayed sources (Alpha Vantage)
+            // STOCK or ETF - Use NSE API for all stocks (works for both NSE and BSE)
             const cleanSymbol = symbol.toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
-            const { isBSE, isNSE } = options;
 
-            // PRIORITY 1: Yahoo Finance (real-time, works for both NSE and BSE, no CORS issues)
-            const yahooSymbols = isBSE
-                ? [`${cleanSymbol}.BO`]
-                : isNSE
-                    ? [`${cleanSymbol}.NS`]
-                    : [`${cleanSymbol}.NS`, `${cleanSymbol}.BO`];
+            console.log(`Fetching stock data for ${cleanSymbol} via NSE API...`);
+            const nseData = await fetchNSEData(cleanSymbol);
 
-            for (const ticker of yahooSymbols) {
-                try {
-                    // Direct Yahoo Finance API call (no proxy needed, CORS is allowed)
-                    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
-                    const response = await fetch(yahooUrl);
-
-                    if (response.ok) {
-                        const yahooData = await response.json();
-                        if (yahooData?.chart?.result?.[0]) {
-                            const meta = yahooData.chart.result[0].meta;
-                            return {
-                                price: meta.regularMarketPrice,
-                                change: meta.regularMarketPrice - meta.chartPreviousClose,
-                                changePercent: meta.chartPreviousClose !== 0 ? ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100 : 0,
-                                name: meta.longName || meta.shortName || cleanSymbol,
-                                timestamp: Date.now()
-                            };
-                        }
-                    }
-                } catch (e) {
-                    console.log(`Yahoo Finance failed for ${ticker}:`, e);
-                    continue; // Try next symbol
-                }
+            if (nseData) {
+                console.log(`✅ NSE API success for ${cleanSymbol}`);
+                return nseData;
             }
 
-            // PRIORITY 2: Alpha Vantage (15-20 min delay, use as last resort)
-            try {
-                // Determine which exchanges to try based on user input or try both
-                let avSymbols = [];
-                if (isBSE) {
-                    avSymbols = [`BSE:${cleanSymbol}`, cleanSymbol]; // Try BSE first
-                } else if (isNSE) {
-                    avSymbols = [`NSE:${cleanSymbol}`, cleanSymbol]; // Try NSE first
-                } else {
-                    avSymbols = [`NSE:${cleanSymbol}`, `BSE:${cleanSymbol}`, cleanSymbol]; // Try both
-                }
-
-                for (const avSymbol of avSymbols) {
-                    const avUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(avSymbol)}&apikey=${ALPHA_VANTAGE_API_KEY}`;
-                    const avResponse = await fetch(avUrl);
-
-                    if (avResponse.ok) {
-                        const avData = await avResponse.json();
-
-                        // Check for API limit
-                        if (avData['Note'] || avData['Information']) {
-                            console.warn('Alpha Vantage API limit reached');
-                            break;
-                        }
-
-                        const quote = avData['Global Quote'];
-                        if (quote && quote['05. price']) {
-                            const price = parseFloat(quote['05. price']);
-                            const prevClose = parseFloat(quote['08. previous close'] || price);
-                            const change = parseFloat(quote['09. change'] || (price - prevClose));
-                            const changePercent = parseFloat(quote['10. change percent']?.replace('%', '') || ((change / prevClose) * 100));
-
-                            return {
-                                price: price,
-                                change: change,
-                                changePercent: changePercent,
-                                name: quote['01. symbol']?.replace(/^(NSE|BSE):/i, '') || cleanSymbol,
-                                timestamp: Date.now(), // Add timestamp
-                                delayed: true // Mark as delayed data
-                            };
-                        }
-                    }
-                }
-            } catch (avError) {
-                console.log('Alpha Vantage API failed:', avError);
-            }
-
+            console.error(`❌ NSE API failed for ${cleanSymbol}`);
             return null;
         }
     } catch (e) {

@@ -37,6 +37,7 @@ import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters'
  */
 const AssetRow = ({
     item,
+    pnlView = 'total',
     expandedAsset,
     setExpandedAsset,
     marketPrices,
@@ -47,7 +48,7 @@ const AssetRow = ({
     setEditValue,
     assetMenuOpen,
     setAssetMenuOpen,
-    setAssetToDelete,
+    onDeleteAsset,
     editingTransaction,
     setEditingTransaction,
     portfolio,
@@ -83,7 +84,9 @@ const AssetRow = ({
 
     const handleDeleteClick = (e) => {
         e.stopPropagation();
-        setAssetToDelete(item);
+        if (onDeleteAsset) {
+            onDeleteAsset(item);
+        }
         setAssetMenuOpen(null);
     };
 
@@ -259,16 +262,33 @@ const AssetRow = ({
                     )}
                 </td>
 
-                {/* P&L Analysis Column */}
+                {/* P&L Analysis Column - Toggleable */}
                 <td className="px-3 md:px-6 py-4 md:py-6 text-right tabular-nums">
-                    <div className={`font-black text-xs md:text-sm ${
-                        item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                    }`}>
-                        {formatCurrency(item.absReturn)}
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-bold uppercase">
-                        {item.absReturnPercent.toFixed(2)}% ROI
-                    </div>
+                    {pnlView === 'total' ? (
+                        <>
+                            <div className={`font-black text-xs md:text-sm ${
+                                item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                            }`}>
+                                {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase">
+                                {item.absReturnPercent >= 0 ? '+' : ''}{item.absReturnPercent.toFixed(2)}% ROI
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className={`font-black text-xs md:text-sm ${
+                                item.dayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                            }`}>
+                                {item.dayChange >= 0 ? '+' : ''}{formatCurrency(item.dayChange)}
+                            </div>
+                            <div className={`text-[10px] font-bold uppercase ${
+                                item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
+                            }`}>
+                                {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
+                            </div>
+                        </>
+                    )}
                 </td>
 
                 {/* Actions Column */}

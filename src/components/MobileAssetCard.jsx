@@ -18,6 +18,7 @@ import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters'
  */
 const MobileAssetCard = ({
     item,
+    pnlView = 'total',
     onUpdateAsset,
     onDeleteAsset,
     onAddTransaction,
@@ -92,175 +93,144 @@ const MobileAssetCard = ({
 
     return (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden active:shadow-md transition-shadow">
-            {/* Card Header - Always Visible */}
-            <div className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`w-12 h-12 rounded-xl ${
+            {/* Card Header - Compact, Always Visible */}
+            <div
+                className="p-3 cursor-pointer active:bg-slate-50 transition-colors"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-center justify-between gap-3">
+                    {/* Asset Icon & Name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className={`w-10 h-10 rounded-lg ${
                             item.type === 'STOCK' ? 'bg-indigo-100 text-indigo-600' :
                             item.type === 'MF' ? 'bg-emerald-100 text-emerald-600' :
                             item.type === 'ETF' ? 'bg-purple-100 text-purple-600' :
                             'bg-amber-100 text-amber-600'
-                        } flex items-center justify-center font-black text-sm shrink-0`}>
+                        } flex items-center justify-center font-black text-xs shrink-0`}>
                             {item.symbol.substring(0, 2)}
                         </div>
                         <div className="min-w-0 flex-1">
-                            <h3 className="font-black text-slate-800 text-sm truncate">
+                            <h3 className="font-black text-slate-800 text-sm truncate leading-tight">
                                 {item.name || item.symbol}
                             </h3>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                <span className="text-[9px] text-slate-400 font-bold uppercase">
-                                    {item.account}
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[9px] text-slate-400 font-bold">
+                                    {item.totalQty} @ ₹{item.avgPrice.toFixed(2)}
                                 </span>
-                                <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                                <span className="text-[8px] text-slate-300 font-black uppercase">
-                                    {item.symbol}
-                                </span>
-                            </div>
-                            {/* Performance Badges */}
-                            <div className="flex gap-1.5 mt-2">
-                                <span className={`px-2 py-0.5 rounded-md text-[8px] font-black ${
-                                    item.absReturnPercent >= 0
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-rose-100 text-rose-700'
+                                <span className={`text-[9px] font-black ${
+                                    item.absReturnPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
                                     {item.absReturnPercent >= 0 ? '↑' : '↓'} {Math.abs(item.absReturnPercent).toFixed(1)}%
                                 </span>
-                                {item.xirr !== null && item.xirr !== undefined && (
-                                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[8px] font-black">
-                                        XIRR: {item.xirr.toFixed(1)}%
-                                    </span>
-                                )}
                             </div>
                         </div>
                     </div>
 
-                    <div className="relative flex items-center gap-2" ref={menuRef}>
-                        <button
-                            onClick={() => setShowMenu(!showMenu)}
-                            className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-lg transition-colors"
-                        >
-                            <MoreVertical size={18} />
-                        </button>
-                        {showMenu && (
-                            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[160px] overflow-hidden">
-                                <button
-                                    onClick={() => {
-                                        onDeleteAsset(item);
-                                        setShowMenu(false);
-                                    }}
-                                    className="w-full px-4 py-3 min-h-[44px] text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2"
-                                >
-                                    <Trash2 size={16} />
-                                    Delete Asset
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Key Metrics - Compact View */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                    {/* Quantity & Avg */}
-                    <div className="bg-slate-50 p-3 rounded-xl">
-                        <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                            Holdings
-                        </p>
-                        <p className="font-black text-slate-800 text-sm">
-                            {item.totalQty} Units
-                        </p>
-                        <p className="text-[10px] text-slate-500 font-bold mt-0.5">
-                            @ ₹{item.avgPrice.toFixed(2)}
-                        </p>
-                    </div>
-
-                    {/* Current Price */}
-                    <div className="bg-slate-50 p-3 rounded-xl">
-                        <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                            LTP
-                        </p>
-                        {editingPrice ? (
-                            <div className="flex items-center gap-2">
-                                <input
-                                    autoFocus
-                                    type="number"
-                                    className="w-20 px-2 py-1 min-h-[32px] bg-white border border-indigo-300 rounded-lg text-sm font-bold"
-                                    value={priceValue}
-                                    onChange={(e) => setPriceValue(e.target.value)}
-                                />
-                                <button
-                                    onClick={handleSavePrice}
-                                    className="text-indigo-600 p-1 min-w-[32px] min-h-[32px]"
-                                >
-                                    <Save size={16} />
-                                </button>
-                            </div>
-                        ) : (
-                            <div onClick={() => setEditingPrice(true)}>
-                                <p className="font-black text-slate-800 text-sm flex items-center gap-1">
-                                    ₹{item.currentPrice?.toFixed(2)}
-                                    <Edit3 size={12} className="text-slate-300" />
+                    {/* Returns - Compact with Toggle */}
+                    <div className="text-right flex flex-col items-end gap-1">
+                        {pnlView === 'total' ? (
+                            <>
+                                <p className={`text-base font-black ${
+                                    item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                }`}>
+                                    {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
                                 </p>
-                                <p className={`text-[10px] font-black mt-0.5 ${
+                                <p className="text-[10px] text-slate-500 font-bold">
+                                    ₹{item.currentPrice?.toFixed(2)}
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <p className={`text-base font-black ${
+                                    item.dayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                }`}>
+                                    {item.dayChange >= 0 ? '+' : ''}{formatCurrency(item.dayChange)}
+                                </p>
+                                <p className={`text-[10px] font-bold ${
                                     item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
                                 }`}>
                                     {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
                                 </p>
-                            </div>
+                            </>
                         )}
                     </div>
-                </div>
 
-                {/* Returns - Prominent */}
-                <div className={`p-4 rounded-xl ${
-                    item.absReturn >= 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-rose-50 border border-rose-200'
-                }`}>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-[9px] font-black text-slate-500 uppercase mb-1">
-                                Total Returns
-                            </p>
-                            <p className={`text-xl font-black ${
-                                item.absReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                            }`}>
-                                {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
-                            </p>
-                            <p className={`text-xs font-bold mt-1 ${
-                                item.absReturnPercent >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                            }`}>
-                                {item.absReturnPercent >= 0 ? '+' : ''}{item.absReturnPercent.toFixed(2)}% ROI
-                            </p>
-                        </div>
-                        {item.absReturn >= 0 ? (
-                            <TrendingUp size={32} className="text-emerald-400" />
+                    {/* Expand Indicator */}
+                    <div className="text-slate-400">
+                        {isExpanded ? (
+                            <ChevronUp size={18} />
                         ) : (
-                            <TrendingDown size={32} className="text-rose-400" />
+                            <ChevronDown size={18} />
                         )}
                     </div>
                 </div>
-
-                {/* Expand/Collapse Button */}
-                <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="w-full mt-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-xl flex items-center justify-center gap-2 text-slate-600 font-bold text-xs transition-colors min-h-[44px]"
-                >
-                    {isExpanded ? (
-                        <>
-                            <ChevronUp size={16} />
-                            Hide Details
-                        </>
-                    ) : (
-                        <>
-                            <ChevronDown size={16} />
-                            View Details
-                        </>
-                    )}
-                </button>
             </div>
 
             {/* Expanded Content */}
             {isExpanded && (
                 <div className="border-t border-slate-200 bg-slate-50 p-4 space-y-4">
+                    {/* Quick Actions */}
+                    <div className="flex gap-2">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingPrice(true);
+                            }}
+                            className="flex-1 px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold min-h-[36px] flex items-center justify-center gap-1"
+                        >
+                            <Edit3 size={14} />
+                            Edit Price
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteAsset(item);
+                            }}
+                            className="px-4 py-2 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold min-h-[36px] flex items-center justify-center gap-1"
+                        >
+                            <Trash2 size={14} />
+                            Delete
+                        </button>
+                    </div>
+
+                    {/* Price Edit Mode */}
+                    {editingPrice && (
+                        <div className="bg-white p-3 rounded-xl border border-indigo-200 space-y-2">
+                            <label className="text-[9px] font-black text-slate-500 uppercase">
+                                Update Current Price
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    autoFocus
+                                    type="number"
+                                    className="flex-1 px-3 py-2 min-h-[44px] bg-white border border-indigo-300 rounded-lg text-sm font-bold"
+                                    value={priceValue}
+                                    onChange={(e) => setPriceValue(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSavePrice();
+                                    }}
+                                    className="px-4 py-2 min-h-[44px] bg-indigo-600 text-white rounded-lg font-bold"
+                                >
+                                    <Save size={16} />
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingPrice(false);
+                                        setPriceValue(item.currentPrice);
+                                    }}
+                                    className="px-4 py-2 min-h-[44px] bg-slate-200 text-slate-600 rounded-lg font-bold"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Detailed Metrics */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="bg-white p-3 rounded-xl border border-slate-200">

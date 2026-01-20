@@ -58,6 +58,8 @@ const HoldingsTable = ({
     setEditValue,
     editingTransaction,
     setEditingTransaction,
+    pnlView,
+    setPnlView,
     onUpdateAsset,
     onDeleteAsset,
     onAddTransaction,
@@ -66,7 +68,11 @@ const HoldingsTable = ({
     onAddDividend,
     onDeleteDividend,
     formatCurrency,
-    formatCurrencyWithDecimals
+    formatCurrencyWithDecimals,
+    portfolio,
+    setPortfolio,
+    marketPrices,
+    setMarketPrices
 }) => {
     const typeLabels = {
         'STOCK': { label: 'Stocks', icon: Activity, color: 'indigo' },
@@ -242,8 +248,11 @@ const HoldingsTable = ({
                         <AssetRow
                             key={item.id}
                             item={item}
+                            pnlView={pnlView}
                             expandedAsset={expandedAsset}
                             setExpandedAsset={setExpandedAsset}
+                            marketPrices={marketPrices}
+                            setMarketPrices={setMarketPrices}
                             assetMenuOpen={assetMenuOpen}
                             setAssetMenuOpen={setAssetMenuOpen}
                             editingId={editingId}
@@ -261,6 +270,8 @@ const HoldingsTable = ({
                             onDeleteDividend={onDeleteDividend}
                             formatCurrency={formatCurrency}
                             formatCurrencyWithDecimals={formatCurrencyWithDecimals}
+                            portfolio={portfolio}
+                            setPortfolio={setPortfolio}
                         />
                     ))}
                 </React.Fragment>
@@ -277,8 +288,11 @@ const HoldingsTable = ({
             <AssetRow
                 key={item.id}
                 item={item}
+                pnlView={pnlView}
                 expandedAsset={expandedAsset}
                 setExpandedAsset={setExpandedAsset}
+                marketPrices={marketPrices}
+                setMarketPrices={setMarketPrices}
                 assetMenuOpen={assetMenuOpen}
                 setAssetMenuOpen={setAssetMenuOpen}
                 editingId={editingId}
@@ -296,6 +310,8 @@ const HoldingsTable = ({
                 onDeleteDividend={onDeleteDividend}
                 formatCurrency={formatCurrency}
                 formatCurrencyWithDecimals={formatCurrencyWithDecimals}
+                portfolio={portfolio}
+                setPortfolio={setPortfolio}
             />
         ));
     };
@@ -433,27 +449,37 @@ const HoldingsTable = ({
             </div>
 
             {/* Desktop View - Table Layout (>= md breakpoint) */}
-            <div className="hidden md:block overflow-x-auto">
-                <table className="w-full min-w-[800px] text-left">
-                    <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100 sticky top-0 z-10">
-                        <tr>
-                            <th className="px-3 md:px-6 lg:px-8 py-4 md:py-5">Security</th>
-                            <th className="px-3 md:px-6 py-4 md:py-5 text-right">Qty & Avg</th>
-                            <th className="px-3 md:px-6 py-4 md:py-5 text-right">
-                                <span className="hidden sm:inline">LTP (Edit)</span>
-                                <span className="sm:hidden">LTP</span>
-                            </th>
-                            <th className="px-3 md:px-6 py-4 md:py-5 text-right">
-                                <span className="hidden sm:inline">P&L Analysis</span>
-                                <span className="sm:hidden">P&L</span>
-                            </th>
-                            <th className="px-3 md:px-6 lg:px-8 py-4 md:py-5 text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {selectedView === 'ALL' ? renderGroupedView() : renderFlatView()}
-                    </tbody>
-                </table>
+            <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-24rem)]">
+                    <table className="w-full min-w-[800px] text-left">
+                        <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-3 md:px-6 lg:px-8 py-4 md:py-5 bg-slate-50">Security</th>
+                                <th className="px-3 md:px-6 py-4 md:py-5 text-right bg-slate-50">Qty & Avg</th>
+                                <th className="px-3 md:px-6 py-4 md:py-5 text-right bg-slate-50">
+                                    <span className="hidden sm:inline">LTP (Edit)</span>
+                                    <span className="sm:hidden">LTP</span>
+                                </th>
+                                <th className="px-3 md:px-6 py-4 md:py-5 text-right bg-slate-50">
+                                    <button
+                                        onClick={() => setPnlView(pnlView === 'total' ? '1day' : 'total')}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg transition-all cursor-pointer ml-auto"
+                                        title="Toggle between Total P&L and 1-Day Change"
+                                    >
+                                        <span className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap">
+                                            {pnlView === 'total' ? '📊 Total P&L' : '📈 1-Day'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">⇄</span>
+                                    </button>
+                                </th>
+                                <th className="px-3 md:px-6 lg:px-8 py-4 md:py-5 text-center bg-slate-50">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {selectedView === 'ALL' ? renderGroupedView() : renderFlatView()}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </>
     );

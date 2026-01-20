@@ -96,6 +96,9 @@ const App = () => {
     const [editValue, setEditValue] = useState('');
     const [editingTransaction, setEditingTransaction] = useState(null);
 
+    // P&L view toggle state ('total' or '1day')
+    const [pnlView, setPnlView] = useState('total');
+
     // ========================================================================
     // COMPUTED VALUES - Portfolio Processing
     // ========================================================================
@@ -684,6 +687,8 @@ const App = () => {
                         setTableFilter={setTableFilter}
                         expandedGroups={expandedGroups}
                         toggleGroupExpansion={toggleGroupExpansion}
+                        pnlView={pnlView}
+                        setPnlView={setPnlView}
                         onUpdateAsset={handleUpdateAsset}
                         onDeleteAsset={(asset) => setAssetToDelete(asset)}
                         onAddTransaction={handleAddTransaction}
@@ -772,6 +777,8 @@ const App = () => {
                     toggleGroupExpansion={toggleGroupExpansion}
                     expandedAsset={expandedAsset}
                     setExpandedAsset={setExpandedAsset}
+                    marketPrices={marketPrices}
+                    setMarketPrices={setMarketPrices}
                     assetMenuOpen={assetMenuOpen}
                     setAssetMenuOpen={setAssetMenuOpen}
                     editingId={editingId}
@@ -780,6 +787,8 @@ const App = () => {
                     setEditValue={setEditValue}
                     editingTransaction={editingTransaction}
                     setEditingTransaction={setEditingTransaction}
+                    pnlView={pnlView}
+                    setPnlView={setPnlView}
                     onUpdateAsset={handleUpdateAsset}
                     onDeleteAsset={(asset) => setAssetToDelete(asset)}
                     onAddTransaction={handleAddTransaction}
@@ -789,6 +798,8 @@ const App = () => {
                     onDeleteDividend={handleDeleteDividend}
                     formatCurrency={formatCurrency}
                     formatCurrencyWithDecimals={formatCurrencyWithDecimals}
+                    portfolio={portfolio}
+                    setPortfolio={setPortfolio}
                 />
                 </div>
             </div>

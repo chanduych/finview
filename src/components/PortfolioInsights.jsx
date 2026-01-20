@@ -26,10 +26,41 @@ import { formatCurrency } from '../utils/formatters';
 const PortfolioInsights = ({ insights }) => {
     const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
     const [capitalDeploymentRange, setCapitalDeploymentRange] = useState('12'); // '6', '12', '24', 'all'
+    const [touchStart, setTouchStart] = useState(null);
+    const [touchEnd, setTouchEnd] = useState(null);
+
+    // Minimum swipe distance (in pixels) to trigger navigation
+    const minSwipeDistance = 50;
 
     if (!insights || !Array.isArray(insights) || insights.length === 0) {
         return null;
     }
+
+    const onTouchStart = (e) => {
+        setTouchEnd(null); // Reset touch end
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > minSwipeDistance;
+        const isRightSwipe = distance < -minSwipeDistance;
+
+        if (isLeftSwipe && currentInsightIndex < insights.length - 1) {
+            // Swipe left - go to next insight
+            setCurrentInsightIndex(currentInsightIndex + 1);
+        }
+        if (isRightSwipe && currentInsightIndex > 0) {
+            // Swipe right - go to previous insight
+            setCurrentInsightIndex(currentInsightIndex - 1);
+        }
+    };
 
     const safeIndex = Math.min(currentInsightIndex, insights.length - 1);
     const insight = insights[safeIndex];
@@ -77,7 +108,12 @@ const PortfolioInsights = ({ insights }) => {
                 </div>
 
                 {/* Current Insight Display */}
-                <div className={`p-4 md:p-6 rounded-xl border-2 ${colorClass} transition-all duration-500`}>
+                <div
+                    className={`p-4 md:p-6 rounded-xl border-2 ${colorClass} transition-all duration-500`}
+                    onTouchStart={onTouchStart}
+                    onTouchMove={onTouchMove}
+                    onTouchEnd={onTouchEnd}
+                >
                     <div className="flex items-start gap-4 mb-4">
                         <div className={`p-3 rounded-xl bg-white/80 ${
                             insight.color === 'indigo' ? 'text-indigo-600' :

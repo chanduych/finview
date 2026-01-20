@@ -20,6 +20,8 @@ const MobilePortfolioView = ({
     setTableFilter,
     expandedGroups,
     toggleGroupExpansion,
+    pnlView,
+    setPnlView,
     onUpdateAsset,
     onDeleteAsset,
     onAddTransaction,
@@ -40,7 +42,7 @@ const MobilePortfolioView = ({
             {/* Mobile Header - Compact */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
                 <div className="p-4">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-lg font-black text-slate-800">
                                 My Portfolio
@@ -58,41 +60,6 @@ const MobilePortfolioView = ({
                         >
                             <RefreshCw size={20} />
                         </button>
-                    </div>
-
-                    {/* Quick Stats - Swipeable Cards */}
-                    <div className="overflow-x-auto -mx-4 px-4 pb-2 hide-scrollbar">
-                        <div className="flex gap-3 min-w-max">
-                            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-4 rounded-2xl text-white min-w-[160px] shadow-lg">
-                                <p className="text-[10px] font-bold opacity-90 mb-1">Total Value</p>
-                                <p className="text-xl font-black">{formatCurrency(stats.current)}</p>
-                                <p className="text-xs font-bold opacity-80 mt-1">
-                                    {stats.absReturnPct >= 0 ? '+' : ''}{stats.absReturnPct.toFixed(2)}%
-                                </p>
-                            </div>
-                            <div className={`p-4 rounded-2xl min-w-[160px] shadow-lg ${
-                                stats.absReturn >= 0
-                                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                                    : 'bg-gradient-to-br from-rose-500 to-rose-600'
-                            } text-white`}>
-                                <p className="text-[10px] font-bold opacity-90 mb-1">Total Returns</p>
-                                <p className="text-xl font-black">
-                                    {stats.absReturn >= 0 ? '+' : ''}{formatCurrency(stats.absReturn)}
-                                </p>
-                                <p className="text-xs font-bold opacity-80 mt-1">
-                                    Invested: {formatCurrency(stats.invested)}
-                                </p>
-                            </div>
-                            <div className="bg-gradient-to-br from-amber-500 to-amber-600 p-4 rounded-2xl text-white min-w-[160px] shadow-lg">
-                                <p className="text-[10px] font-bold opacity-90 mb-1">Today's Change</p>
-                                <p className="text-xl font-black">
-                                    {stats.dayChange >= 0 ? '+' : ''}{formatCurrency(stats.dayChange)}
-                                </p>
-                                <p className="text-xs font-bold opacity-80 mt-1">
-                                    {stats.dayChangePct >= 0 ? '+' : ''}{stats.dayChangePct.toFixed(2)}%
-                                </p>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -174,26 +141,69 @@ const MobilePortfolioView = ({
                                 'CASH': 'Cash'
                             };
 
+                            // Calculate group totals
+                            const totalPnL = items.reduce((sum, item) => sum + item.absReturn, 0);
+                            const totalDayChange = items.reduce((sum, item) => sum + item.dayChange, 0);
+
                             return (
                                 <div key={type} className="space-y-3">
-                                    <button
-                                        onClick={() => toggleGroupExpansion(type)}
-                                        className="w-full bg-white p-4 rounded-2xl border border-slate-200 active:bg-slate-50 transition-all"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-black text-slate-800 uppercase">
-                                                {typeLabels[type]} ({items.length})
-                                            </span>
-                                            <span className="text-xs text-slate-500">
-                                                {isExpanded ? 'Collapse' : 'Expand'}
-                                            </span>
+                                    <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                                        <button
+                                            onClick={() => toggleGroupExpansion(type)}
+                                            className="w-full active:bg-slate-50 transition-all"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-black text-slate-800 uppercase">
+                                                    {typeLabels[type]} ({items.length})
+                                                </span>
+                                                <span className="text-xs text-slate-500">
+                                                    {isExpanded ? 'Collapse' : 'Expand'}
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        {/* Group Total with Toggle */}
+                                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                                            <div className="flex-1">
+                                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                                                    Total {typeLabels[type]}
+                                                </p>
+                                                {pnlView === 'total' ? (
+                                                    <p className={`text-lg font-black ${
+                                                        totalPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                    }`}>
+                                                        {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
+                                                    </p>
+                                                ) : (
+                                                    <p className={`text-lg font-black ${
+                                                        totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                    }`}>
+                                                        {totalDayChange >= 0 ? '+' : ''}{formatCurrency(totalDayChange)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (setPnlView) {
+                                                        setPnlView(pnlView === 'total' ? '1day' : 'total');
+                                                    }
+                                                }}
+                                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg transition-all min-h-[40px]"
+                                            >
+                                                <span className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap">
+                                                    {pnlView === 'total' ? '📊 Total' : '📈 1-Day'}
+                                                </span>
+                                                <span className="text-xs text-slate-400">⇄</span>
+                                            </button>
                                         </div>
-                                    </button>
+                                    </div>
 
                                     {isExpanded && items.map((item) => (
                                         <MobileAssetCard
                                             key={item.id}
                                             item={item}
+                                            pnlView={pnlView}
                                             onUpdateAsset={onUpdateAsset}
                                             onDeleteAsset={onDeleteAsset}
                                             onAddTransaction={onAddTransaction}
@@ -218,6 +228,7 @@ const MobilePortfolioView = ({
                             <MobileAssetCard
                                 key={item.id}
                                 item={item}
+                                pnlView={pnlView}
                                 onUpdateAsset={onUpdateAsset}
                                 onDeleteAsset={onDeleteAsset}
                                 onAddTransaction={onAddTransaction}
