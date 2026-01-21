@@ -83,7 +83,8 @@ export const useSearch = (selectedAssetType, isSelecting = false) => {
         if (/^\d+$/.test(query) || selectedAssetType === 'MF') {
           console.log('🔍 Searching MF API for:', query);
           try {
-            const response = await fetch(`/api/mf/mf/search?q=${encodeURIComponent(query)}`);
+            // Call MF API directly - it supports CORS
+            const response = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`);
             console.log('🔍 MF API response status:', response.status, response.ok);
 
             if (response.ok) {

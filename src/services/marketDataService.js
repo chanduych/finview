@@ -59,8 +59,12 @@ const fetchNSEData = async (symbol) => {
 export const getMarketData = async (symbol, type, options = {}) => {
     try {
         if (type === 'MF') {
-            // Use Vercel serverless function for Mutual Fund data
-            const res = await fetch(`/api/mf?schemeCode=${encodeURIComponent(symbol)}`);
+            // Call MF API directly - it supports CORS
+            const res = await fetch(`https://api.mfapi.in/mf/${encodeURIComponent(symbol)}`);
+            if (!res.ok) {
+                console.log(`MF API failed for ${symbol}: ${res.status}`);
+                return null;
+            }
             const data = await res.json();
             if (!data.data?.[0]) return null;
             const nav = parseFloat(data.data[0].nav);
