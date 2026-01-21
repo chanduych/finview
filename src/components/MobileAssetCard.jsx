@@ -235,18 +235,18 @@ const MobileAssetCard = ({
                     <div className="grid grid-cols-2 gap-3">
                         <div className="bg-white p-3 rounded-xl border border-slate-200">
                             <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                                Invested
+                                Total Value
                             </p>
-                            <p className="text-base font-black text-slate-800">
-                                {formatCurrency(item.investedValue)}
+                            <p className="text-base font-black text-indigo-600">
+                                {formatCurrency(item.currentValue)}
                             </p>
                         </div>
                         <div className="bg-white p-3 rounded-xl border border-slate-200">
                             <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                                Current
+                                Invested
                             </p>
-                            <p className="text-base font-black text-indigo-600">
-                                {formatCurrency(item.currentValue)}
+                            <p className="text-base font-black text-slate-800">
+                                {formatCurrency(item.investedValue)}
                             </p>
                         </div>
                         <div className="bg-white p-3 rounded-xl border border-slate-200">

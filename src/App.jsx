@@ -201,11 +201,11 @@ const App = () => {
         const totalSTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.stcg || 0), 0);
         const totalLTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.ltcg || 0), 0);
 
-        // Type allocation for pie chart
+        // Type allocation for pie chart - Use filteredPortfolio to respect wallet and asset type filters
         const typeAllocation = [
-            { name: 'Equities', value: processedPortfolio.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'Mutual Funds', value: processedPortfolio.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'ETFs', value: processedPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
+            { name: 'Equities', value: filteredPortfolio.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'Mutual Funds', value: filteredPortfolio.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'ETFs', value: filteredPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
         ].filter(x => x.value > 0);
 
         // Wallet allocation
@@ -292,19 +292,26 @@ const App = () => {
     // ========================================================================
 
     /**
-     * Generate ALL capital deployment data (not filtered by range)
-     * Filtering happens in PortfolioInsights component based on user selection
+     * Generate capital deployment data filtered by active accounts
+     * This ensures the chart reflects the selected wallet filters
      */
     const capitalDeploymentData = useMemo(() => {
         const now = new Date();
         const monthsToShow = 120; // Generate all months (10 years max)
         const data = [];
 
+        // Filter portfolio by active accounts and selected view
+        const portfolioToUse = portfolio.filter(asset => {
+            const matchesAccount = activeAccounts.includes(asset.account);
+            const matchesType = selectedView === 'ALL' || asset.type === selectedView;
+            return matchesAccount && matchesType;
+        });
+
         for (let i = monthsToShow - 1; i >= 0; i--) {
             const targetMonth = new Date(now.getFullYear(), now.getMonth() - i, 1);
             const monthKey = targetMonth.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 
-            const monthlyInvestment = portfolio.reduce((sum, asset) => {
+            const monthlyInvestment = portfolioToUse.reduce((sum, asset) => {
                 return sum + asset.transactions.reduce((s, tx) => {
                     const txDate = new Date(tx.date);
                     if (txDate.getFullYear() === targetMonth.getFullYear() &&
@@ -324,7 +331,7 @@ const App = () => {
         }
 
         return data.length > 0 ? data : [{ month: 'No data', invested: 0 }];
-    }, [portfolio]);
+    }, [portfolio, activeAccounts, selectedView]);
 
     // ========================================================================
     // COMPUTED VALUES - Portfolio Insights
@@ -433,15 +440,16 @@ const App = () => {
             });
         }
 
-        // Asset Allocation Insight
-        if (totalPortfolioValue > 0) {
-            const equity = processedPortfolio.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
-            const mf = processedPortfolio.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
-            const etf = processedPortfolio.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
+        // Asset Allocation Insight - Use filteredPortfolio to respect wallet and asset type filters
+        const filteredTotalValue = filteredPortfolio.reduce((s, p) => s + p.currentValue, 0);
+        if (filteredTotalValue > 0) {
+            const equity = filteredPortfolio.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
+            const mf = filteredPortfolio.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
+            const etf = filteredPortfolio.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
 
-            const equityPercent = (equity / totalPortfolioValue) * 100;
-            const mfPercent = (mf / totalPortfolioValue) * 100;
-            const etfPercent = (etf / totalPortfolioValue) * 100;
+            const equityPercent = (equity / filteredTotalValue) * 100;
+            const mfPercent = (mf / filteredTotalValue) * 100;
+            const etfPercent = (etf / filteredTotalValue) * 100;
 
             insightsArray.push({
                 type: 'overweight',
@@ -665,9 +673,23 @@ const App = () => {
     const renderMobileView = () => {
         switch (mobileView) {
             case 'insights':
-                return <MobileInsightsView insights={insights} />;
+                return <MobileInsightsView 
+                    insights={insights}
+                    accounts={accounts}
+                    activeAccounts={activeAccounts}
+                    setActiveAccounts={setActiveAccounts}
+                    selectedView={selectedView}
+                    setSelectedView={setSelectedView}
+                />;
             case 'analytics':
-                return <MobileAnalyticsView stats={stats} />;
+                return <MobileAnalyticsView 
+                    stats={stats}
+                    accounts={accounts}
+                    activeAccounts={activeAccounts}
+                    setActiveAccounts={setActiveAccounts}
+                    selectedView={selectedView}
+                    setSelectedView={setSelectedView}
+                />;
             case 'portfolio':
             default:
                 return (
@@ -694,6 +716,9 @@ const App = () => {
                         onDeleteDividend={handleDeleteDividend}
                         formatCurrency={formatCurrency}
                         onQuickAdd={handleQuickAdd}
+                        accounts={accounts}
+                        activeAccounts={activeAccounts}
+                        setActiveAccounts={setActiveAccounts}
                     />
                 );
         }
