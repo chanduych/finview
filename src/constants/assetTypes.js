@@ -8,6 +8,5 @@ import {
 export const ASSET_TYPES = {
   STOCK: { label: 'Stocks', icon: Activity, color: 'indigo' },
   MF: { label: 'Mutual Funds', icon: Building2, color: 'emerald' },
-  ETF: { label: 'ETFs', icon: TrendingUp, color: 'amber' },
-  CASH: { label: 'Cash', icon: Wallet, color: 'slate' }
+  ETF: { label: 'ETFs', icon: TrendingUp, color: 'amber' }
 };

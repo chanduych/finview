@@ -205,8 +205,7 @@ const App = () => {
         const typeAllocation = [
             { name: 'Equities', value: processedPortfolio.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
             { name: 'Mutual Funds', value: processedPortfolio.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'ETFs', value: processedPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'Cash', value: processedPortfolio.filter(p => p.type === 'CASH').reduce((s,p) => s+p.currentValue, 0) }
+            { name: 'ETFs', value: processedPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
         ].filter(x => x.value > 0);
 
         // Wallet allocation
@@ -439,25 +438,22 @@ const App = () => {
             const equity = processedPortfolio.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
             const mf = processedPortfolio.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
             const etf = processedPortfolio.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
-            const cash = processedPortfolio.filter(p => p.type === 'CASH').reduce((s, p) => s + p.currentValue, 0);
 
             const equityPercent = (equity / totalPortfolioValue) * 100;
             const mfPercent = (mf / totalPortfolioValue) * 100;
             const etfPercent = (etf / totalPortfolioValue) * 100;
-            const cashPercent = (cash / totalPortfolioValue) * 100;
 
             insightsArray.push({
                 type: 'overweight',
                 title: 'Asset Allocation',
                 description: 'Portfolio distribution by asset type',
-                value: `${Math.max(equityPercent, mfPercent, etfPercent, cashPercent).toFixed(1)}%`,
+                value: `${Math.max(equityPercent, mfPercent, etfPercent).toFixed(1)}%`,
                 icon: PieChart,
                 color: 'indigo',
                 data: {
                     equity: { value: equity, percent: equityPercent },
                     mf: { value: mf, percent: mfPercent },
-                    etf: { value: etf, percent: etfPercent },
-                    cash: { value: cash, percent: cashPercent }
+                    etf: { value: etf, percent: etfPercent }
                 }
             });
         }

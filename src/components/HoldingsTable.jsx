@@ -77,8 +77,7 @@ const HoldingsTable = ({
     const typeLabels = {
         'STOCK': { label: 'Stocks', icon: Activity, color: 'indigo' },
         'MF': { label: 'Mutual Funds', icon: Building2, color: 'emerald' },
-        'ETF': { label: 'ETFs', icon: TrendingUp, color: 'purple' },
-        'CASH': { label: 'Cash', icon: Wallet, color: 'amber' }
+        'ETF': { label: 'ETFs', icon: TrendingUp, color: 'purple' }
     };
 
     const toggleGroup = (type) => {

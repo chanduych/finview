@@ -33,6 +33,7 @@ const MobilePortfolioView = ({
     onQuickAdd
 }) => {
     const [showFilters, setShowFilters] = useState(false);
+    const [expandedTotals, setExpandedTotals] = useState({});
 
     // Check if portfolio is empty
     const isEmptyPortfolio = filteredPortfolio.length === 0 && !tableFilter && selectedView === 'ALL';
@@ -91,7 +92,7 @@ const MobilePortfolioView = ({
                     {/* Filter Chips */}
                     {showFilters && (
                         <div className="flex gap-2 mt-3 overflow-x-auto hide-scrollbar pb-1">
-                            {['ALL', 'STOCK', 'MF', 'ETF', 'CASH'].map((type) => (
+                            {['ALL', 'STOCK', 'MF', 'ETF'].map((type) => (
                                 <button
                                     key={type}
                                     onClick={() => setSelectedView(type)}
@@ -104,7 +105,7 @@ const MobilePortfolioView = ({
                                     {type === 'ALL' ? 'All Assets' :
                                      type === 'STOCK' ? 'Stocks' :
                                      type === 'MF' ? 'Mutual Funds' :
-                                     type === 'ETF' ? 'ETFs' : 'Cash'}
+                                     type === 'ETF' ? 'ETFs' : ''}
                                 </button>
                             ))}
                         </div>
@@ -134,16 +135,18 @@ const MobilePortfolioView = ({
                             ) : (
                         Object.entries(groupedPortfolio).map(([type, items]) => {
                             const isExpanded = expandedGroups.includes(type);
+                            const isTotalExpanded = expandedTotals[type] ?? (type === 'STOCK' || type === 'MF' ? false : true);
                             const typeLabels = {
                                 'STOCK': 'Stocks',
                                 'MF': 'Mutual Funds',
-                                'ETF': 'ETFs',
-                                'CASH': 'Cash'
+                                'ETF': 'ETFs'
                             };
 
                             // Calculate group totals
                             const totalPnL = items.reduce((sum, item) => sum + item.absReturn, 0);
                             const totalDayChange = items.reduce((sum, item) => sum + item.dayChange, 0);
+                            const totalValue = items.reduce((sum, item) => sum + item.currentValue, 0);
+                            const totalInvested = items.reduce((sum, item) => sum + item.investedAmount, 0);
 
                             return (
                                 <div key={type} className="space-y-3">
@@ -157,46 +160,122 @@ const MobilePortfolioView = ({
                                                     {typeLabels[type]} ({items.length})
                                                 </span>
                                                 <span className="text-xs text-slate-500">
-                                                    {isExpanded ? 'Collapse' : 'Expand'}
+                                                    {isExpanded ? '▼ Collapse' : '▶ Expand'}
                                                 </span>
                                             </div>
                                         </button>
 
-                                        {/* Group Total with Toggle */}
-                                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-                                            <div className="flex-1">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
-                                                    Total {typeLabels[type]}
-                                                </p>
-                                                {pnlView === 'total' ? (
-                                                    <p className={`text-lg font-black ${
-                                                        totalPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                                    }`}>
-                                                        {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
+                                        {/* Group Total with Toggle - Collapsible for STOCK and MF */}
+                                        {(type === 'STOCK' || type === 'MF') ? (
+                                            <div className="mt-3 pt-3 border-t border-slate-100">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setExpandedTotals(prev => ({ ...prev, [type]: !isTotalExpanded }));
+                                                    }}
+                                                    className="w-full flex items-center justify-between active:bg-slate-50 transition-all py-2"
+                                                >
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                                                        Total {typeLabels[type]}
                                                     </p>
-                                                ) : (
-                                                    <p className={`text-lg font-black ${
-                                                        totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                                    }`}>
-                                                        {totalDayChange >= 0 ? '+' : ''}{formatCurrency(totalDayChange)}
-                                                    </p>
+                                                    <span className="text-xs text-slate-500">
+                                                        {isTotalExpanded ? '▼' : '▶'}
+                                                    </span>
+                                                </button>
+                                                
+                                                {isTotalExpanded && (
+                                                    <div className="mt-3 space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex-1">
+                                                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                                                                    Total Value
+                                                                </p>
+                                                                <p className="text-lg font-black text-slate-800">
+                                                                    {formatCurrency(totalValue)}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                                                                    Invested
+                                                                </p>
+                                                                <p className="text-lg font-black text-slate-600">
+                                                                    {formatCurrency(totalInvested)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                                                            <div className="flex-1">
+                                                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                                                                    {pnlView === 'total' ? 'Total P&L' : '1-Day Change'}
+                                                                </p>
+                                                                {pnlView === 'total' ? (
+                                                                    <p className={`text-lg font-black ${
+                                                                        totalPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                                    }`}>
+                                                                        {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className={`text-lg font-black ${
+                                                                        totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                                    }`}>
+                                                                        {totalDayChange >= 0 ? '+' : ''}{formatCurrency(totalDayChange)}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (setPnlView) {
+                                                                        setPnlView(pnlView === 'total' ? '1day' : 'total');
+                                                                    }
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg transition-all min-h-[40px]"
+                                                            >
+                                                                <span className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap">
+                                                                    {pnlView === 'total' ? '📊 Total' : '📈 1-Day'}
+                                                                </span>
+                                                                <span className="text-xs text-slate-400">⇄</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (setPnlView) {
-                                                        setPnlView(pnlView === 'total' ? '1day' : 'total');
-                                                    }
-                                                }}
-                                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg transition-all min-h-[40px]"
-                                            >
-                                                <span className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap">
-                                                    {pnlView === 'total' ? '📊 Total' : '📈 1-Day'}
-                                                </span>
-                                                <span className="text-xs text-slate-400">⇄</span>
-                                            </button>
-                                        </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+                                                <div className="flex-1">
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">
+                                                        Total {typeLabels[type]}
+                                                    </p>
+                                                    {pnlView === 'total' ? (
+                                                        <p className={`text-lg font-black ${
+                                                            totalPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                        }`}>
+                                                            {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
+                                                        </p>
+                                                    ) : (
+                                                        <p className={`text-lg font-black ${
+                                                            totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                                        }`}>
+                                                            {totalDayChange >= 0 ? '+' : ''}{formatCurrency(totalDayChange)}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (setPnlView) {
+                                                            setPnlView(pnlView === 'total' ? '1day' : 'total');
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 rounded-lg transition-all min-h-[40px]"
+                                                >
+                                                    <span className="text-[9px] font-black text-slate-700 uppercase whitespace-nowrap">
+                                                        {pnlView === 'total' ? '📊 Total' : '📈 1-Day'}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400">⇄</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {isExpanded && items.map((item) => (

@@ -15,7 +15,7 @@ import { Search, Plus, Layers, Activity, Building2, TrendingUp, Wallet } from 'l
  * @param {string} props.tableFilter - Current search filter text
  * @param {Function} props.setTableFilter - Function to update search filter
  * @param {Function} props.setShowAddModal - Function to show add asset modal
- * @param {string} props.selectedView - Currently selected view ('ALL', 'STOCK', 'MF', 'ETF', 'CASH')
+ * @param {string} props.selectedView - Currently selected view ('ALL', 'STOCK', 'MF', 'ETF')
  * @param {Function} props.setSelectedView - Function to update selected view
  * @param {Array} props.processedPortfolio - Processed portfolio data for counts
  * @param {Array<string>} props.activeAccounts - List of active accounts
@@ -33,8 +33,7 @@ const TableControlBar = ({
         { value: 'ALL', label: 'All', icon: Layers },
         { value: 'STOCK', label: 'Stocks', icon: Activity },
         { value: 'MF', label: 'Mutual Funds', labelShort: 'MF', icon: Building2 },
-        { value: 'ETF', label: 'ETFs', icon: TrendingUp },
-        { value: 'CASH', label: 'Cash', icon: Wallet }
+        { value: 'ETF', label: 'ETFs', icon: TrendingUp }
     ];
 
     const handleAddNew = () => {

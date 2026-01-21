@@ -369,8 +369,7 @@ const PortfolioInsights = ({ insights }) => {
                                 {[
                                     { key: 'equity', label: 'Equities', color: 'indigo' },
                                     { key: 'mf', label: 'Mutual Funds', color: 'emerald' },
-                                    { key: 'etf', label: 'ETFs', color: 'amber' },
-                                    { key: 'cash', label: 'Cash', color: 'slate' }
+                                    { key: 'etf', label: 'ETFs', color: 'amber' }
                                 ].map(({ key, label, color }) => {
                                     const asset = insight.data[key];
                                     if (!asset || asset.value === 0) return null;

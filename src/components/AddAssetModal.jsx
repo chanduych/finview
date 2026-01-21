@@ -17,7 +17,7 @@ import { ASSET_TYPES } from '../constants/assetTypes';
  *
  * Modal for adding new investments to the portfolio.
  * Features:
- * - Asset type selection (STOCK, MF, ETF, CASH)
+ * - Asset type selection (STOCK, MF, ETF)
  * - Live search with dropdown results
  * - Symbol verification with price preview
  * - Form fields for quantity, buy price, date, and sector
@@ -191,7 +191,7 @@ const AddAssetModal = ({
                 </div>
 
                 {/* Content - Scrollable */}
-                <div className="p-4 md:p-8 space-y-4 md:space-y-6 overflow-y-auto flex-1">
+                <div className="p-4 md:p-8 space-y-5 md:space-y-6 overflow-y-auto flex-1">
                     {/* Account Selection */}
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
@@ -227,7 +227,6 @@ const AddAssetModal = ({
                             <option value="STOCK">Stock</option>
                             <option value="MF">Mutual Fund</option>
                             <option value="ETF">ETF</option>
-                            <option value="CASH">Cash</option>
                         </select>
                     </div>
 
@@ -353,7 +352,7 @@ const AddAssetModal = ({
                     </div>
 
                     {/* Quantity and Buy Price */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
                                 Quantity
