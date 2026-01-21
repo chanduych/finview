@@ -27,30 +27,53 @@ export default async function handler(req, res) {
 
   try {
     // Check if this is a path-based request
-    // The path might be in req.query.path (from Vercel rewrite) or we need to parse req.url
+    // Try multiple methods to get the path
     let apiPath = null;
     
-    // Try to get path from query parameter (Vercel rewrite with :path*)
-    if (req.query.path) {
+    // Method 1: Check Vercel's x-vercel-original-path header
+    const originalPath = req.headers['x-vercel-original-path'] || req.headers['x-invoke-path'];
+    if (originalPath && originalPath.startsWith('/api/nse/api/')) {
+      apiPath = originalPath.replace('/api/nse/api/', '');
+    }
+    
+    // Method 2: Try to get path from query parameter (Vercel rewrite with :path*)
+    if (!apiPath && req.query.path) {
       const pathParam = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
       // If path starts with 'api/', it's a path-based request
       if (pathParam.startsWith('api/')) {
         apiPath = pathParam.replace(/^api\//, '');
+      } else if (pathParam.includes('/')) {
+        // Path might be like 'api/search/autocomplete'
+        const parts = pathParam.split('/');
+        if (parts[0] === 'api') {
+          apiPath = parts.slice(1).join('/');
+        }
       }
     }
     
-    // If not found in query, try parsing from req.url
+    // Method 3: Try parsing from req.url
     if (!apiPath && req.url) {
       try {
-        const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-        const pathname = url.pathname;
+        // req.url might be just the path or full URL
+        let pathname = req.url;
+        if (req.url.includes('?')) {
+          pathname = req.url.split('?')[0];
+        }
         if (pathname.startsWith('/api/nse/api/')) {
           apiPath = pathname.replace('/api/nse/api/', '');
+        } else if (pathname.startsWith('/api/nse/') && pathname !== '/api/nse') {
+          // Handle case where rewrite passes path differently
+          const remaining = pathname.replace('/api/nse/', '');
+          if (remaining.startsWith('api/')) {
+            apiPath = remaining.replace(/^api\//, '');
+          }
         }
       } catch (e) {
-        // URL parsing failed, continue with legacy handling
+        console.log('[NSE API] URL parsing error:', e.message);
       }
     }
+    
+    console.log('[NSE API] Detected path:', apiPath, 'Original URL:', req.url, 'Query:', req.query);
     
     // If we have a path-based request, handle it
     if (apiPath) {
