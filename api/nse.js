@@ -1,8 +1,8 @@
 /**
- * Vercel Serverless Function - NSE API Proxy
+ * Vercel Serverless Function - NSE API Proxy (Legacy endpoint for backward compatibility)
  *
- * This function proxies requests to NSE India API to avoid CORS issues
- * and work around the fact that Vercel doesn't support Vite dev proxy.
+ * This function proxies requests to NSE India API to avoid CORS issues.
+ * For new endpoints, use /api/nse/[...path] catch-all route.
  *
  * Usage: /api/nse?symbol=RELIANCE
  * Maps to: https://www.nseindia.com/api/quote-equity?symbol=RELIANCE
@@ -44,7 +44,8 @@ export default async function handler(req, res) {
           'Accept-Language': 'en-US,en;q=0.9',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive'
+          'Connection': 'keep-alive',
+          'Referer': 'https://www.nseindia.com/'
         }
       }
     );
