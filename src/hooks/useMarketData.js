@@ -33,14 +33,14 @@ export const useMarketData = (portfolio, setMarketPrices) => {
     }
   };
 
-  // Effect 1: Auto-refresh on app load
+  // Effect 1: Auto-refresh when portfolio loads or changes
   useEffect(() => {
     if (portfolio.length > 0) {
-      console.log('🚀 App loaded - refreshing prices...');
+      console.log('🚀 Portfolio loaded - refreshing prices...');
       refreshAllPrices();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  }, [portfolio.length]); // Trigger when portfolio gets populated
 
   // Effect 2: Auto-refresh every 15 minutes (24/7)
   useEffect(() => {
