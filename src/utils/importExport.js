@@ -134,9 +134,11 @@ export const getYearWiseSummary = (portfolio) => {
  * @param {Function} callbacks.setMarketPrices - Function to update market prices state
  * @param {Function} callbacks.setShowSettingsModal - Function to close settings modal
  * @param {Array} callbacks.accounts - Current accounts array
+ * @param {Function} callbacks.bulkImportPortfolio - Optional: Function to bulk import to Supabase
+ * @param {boolean} callbacks.useSupabase - Optional: Whether Supabase is enabled
  */
 export const handleImport = (e, callbacks) => {
-    const { setPortfolio, setAccounts, setMarketPrices, setShowSettingsModal, accounts } = callbacks;
+    const { setPortfolio, setAccounts, setMarketPrices, setShowSettingsModal, accounts, bulkImportPortfolio, useSupabase } = callbacks;
     const file = e.target.files[0];
     if (!file) return;
 
@@ -146,15 +148,39 @@ export const handleImport = (e, callbacks) => {
     if (fileExtension === 'json') {
         // JSON Import (Full Backup)
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
             try {
                 const data = JSON.parse(evt.target.result);
                 if (data.portfolio && data.accounts) {
-                    setPortfolio(data.portfolio);
-                    setAccounts(data.accounts);
-                    if (data.marketPrices) setMarketPrices(data.marketPrices);
-                    setShowSettingsModal(false);
-                    alert('Portfolio imported successfully!');
+                    // If Supabase is enabled, use bulk import to save to database
+                    if (useSupabase && bulkImportPortfolio) {
+                        const result = await bulkImportPortfolio(data.portfolio, data.accounts);
+                        if (result.error) {
+                            alert('Error importing to database: ' + result.error.message);
+                        } else {
+                            if (data.marketPrices) setMarketPrices(data.marketPrices);
+                            setShowSettingsModal(false);
+
+                            // Show detailed import stats
+                            const stats = result.stats;
+                            const message = `✅ Import Completed!\n\n` +
+                                `📁 Accounts Created: ${stats.accountsCreated}\n` +
+                                `📊 New Portfolios: ${stats.portfoliosCreated}\n` +
+                                `➕ Transactions Added: ${stats.transactionsAdded}\n` +
+                                `⏭️ Transactions Skipped (duplicates): ${stats.transactionsSkipped}\n` +
+                                `💰 Dividends Added: ${stats.dividendsAdded}\n` +
+                                `⏭️ Dividends Skipped (duplicates): ${stats.dividendsSkipped}`;
+
+                            alert(message);
+                        }
+                    } else {
+                        // LocalStorage mode - just update state
+                        setPortfolio(data.portfolio);
+                        setAccounts(data.accounts);
+                        if (data.marketPrices) setMarketPrices(data.marketPrices);
+                        setShowSettingsModal(false);
+                        alert('Portfolio imported successfully!');
+                    }
                 } else {
                     alert('Invalid JSON format. Missing portfolio or accounts data.');
                 }
@@ -236,10 +262,33 @@ export const handleImport = (e, callbacks) => {
                             }
                         });
 
-                        setPortfolio(importedPortfolio);
-                        setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
-                        setShowSettingsModal(false);
-                        alert(`Successfully imported ${importedPortfolio.length} assets from Zerodha CSV!`);
+                        // If Supabase is enabled, use bulk import to save to database
+                        if (useSupabase && bulkImportPortfolio) {
+                            const accountsArray = Array.from(importedAccounts);
+                            bulkImportPortfolio(importedPortfolio, accountsArray).then(result => {
+                                if (result.error) {
+                                    alert('Error importing to database: ' + result.error.message);
+                                } else {
+                                    setShowSettingsModal(false);
+
+                                    // Show detailed import stats
+                                    const stats = result.stats;
+                                    const message = `✅ Import Completed (Zerodha CSV)!\n\n` +
+                                        `📁 Accounts Created: ${stats.accountsCreated}\n` +
+                                        `📊 New Portfolios: ${stats.portfoliosCreated}\n` +
+                                        `➕ Transactions Added: ${stats.transactionsAdded}\n` +
+                                        `⏭️ Transactions Skipped (duplicates): ${stats.transactionsSkipped}`;
+
+                                    alert(message);
+                                }
+                            });
+                        } else {
+                            // LocalStorage mode - just update state
+                            setPortfolio(importedPortfolio);
+                            setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                            setShowSettingsModal(false);
+                            alert(`Successfully imported ${importedPortfolio.length} assets from Zerodha CSV!`);
+                        }
                     } else {
                         // Generic Portfolio CSV (from our export)
                         const importedPortfolio = [];
@@ -273,10 +322,33 @@ export const handleImport = (e, callbacks) => {
                             });
                         });
 
-                        setPortfolio(importedPortfolio);
-                        setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
-                        setShowSettingsModal(false);
-                        alert(`Successfully imported ${importedPortfolio.length} assets from CSV!`);
+                        // If Supabase is enabled, use bulk import to save to database
+                        if (useSupabase && bulkImportPortfolio) {
+                            const accountsArray = Array.from(importedAccounts);
+                            bulkImportPortfolio(importedPortfolio, accountsArray).then(result => {
+                                if (result.error) {
+                                    alert('Error importing to database: ' + result.error.message);
+                                } else {
+                                    setShowSettingsModal(false);
+
+                                    // Show detailed import stats
+                                    const stats = result.stats;
+                                    const message = `✅ Import Completed (CSV)!\n\n` +
+                                        `📁 Accounts Created: ${stats.accountsCreated}\n` +
+                                        `📊 New Portfolios: ${stats.portfoliosCreated}\n` +
+                                        `➕ Transactions Added: ${stats.transactionsAdded}\n` +
+                                        `⏭️ Transactions Skipped (duplicates): ${stats.transactionsSkipped}`;
+
+                                    alert(message);
+                                }
+                            });
+                        } else {
+                            // LocalStorage mode - just update state
+                            setPortfolio(importedPortfolio);
+                            setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                            setShowSettingsModal(false);
+                            alert(`Successfully imported ${importedPortfolio.length} assets from CSV!`);
+                        }
                     }
                 } catch (err) {
                     alert('Error parsing CSV: ' + err.message);
@@ -332,10 +404,33 @@ export const handleImport = (e, callbacks) => {
                     });
                 });
 
-                setPortfolio(importedPortfolio);
-                setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
-                setShowSettingsModal(false);
-                alert(`Successfully imported ${importedPortfolio.length} assets from Excel!`);
+                // If Supabase is enabled, use bulk import to save to database
+                if (useSupabase && bulkImportPortfolio) {
+                    const accountsArray = Array.from(importedAccounts);
+                    bulkImportPortfolio(importedPortfolio, accountsArray).then(result => {
+                        if (result.error) {
+                            alert('Error importing to database: ' + result.error.message);
+                        } else {
+                            setShowSettingsModal(false);
+
+                            // Show detailed import stats
+                            const stats = result.stats;
+                            const message = `✅ Import Completed (Excel)!\n\n` +
+                                `📁 Accounts Created: ${stats.accountsCreated}\n` +
+                                `📊 New Portfolios: ${stats.portfoliosCreated}\n` +
+                                `➕ Transactions Added: ${stats.transactionsAdded}\n` +
+                                `⏭️ Transactions Skipped (duplicates): ${stats.transactionsSkipped}`;
+
+                            alert(message);
+                        }
+                    });
+                } else {
+                    // LocalStorage mode - just update state
+                    setPortfolio(importedPortfolio);
+                    setAccounts([...new Set([...accounts, ...Array.from(importedAccounts)])]);
+                    setShowSettingsModal(false);
+                    alert(`Successfully imported ${importedPortfolio.length} assets from Excel!`);
+                }
             } catch (err) {
                 alert('Error reading Excel file: ' + err.message);
             }

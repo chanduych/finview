@@ -7,19 +7,19 @@ const AuthPage = ({ onSuccess }) => {
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col p-4 overflow-y-auto">
+      <div className="w-full max-w-md mx-auto my-auto">
         {/* Logo/Branding */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-2 mb-2">
             <div className="bg-indigo-600 p-2 rounded-lg">
-              <TrendingUp className="w-8 h-8 text-white" />
+              <TrendingUp className="w-6 h-6 md:w-8 md:h-8 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-800">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-800">
               Investment Tracker
             </h1>
           </div>
-          <p className="text-slate-600">
+          <p className="text-sm md:text-base text-slate-600">
             Track your portfolio, analyze performance, and make informed decisions
           </p>
         </div>
@@ -38,7 +38,7 @@ const AuthPage = ({ onSuccess }) => {
         )}
 
         {/* Footer */}
-        <div className="mt-8 text-center text-sm text-slate-500">
+        <div className="mt-6 text-center text-xs md:text-sm text-slate-500">
           <p>Secure authentication powered by Supabase</p>
         </div>
       </div>

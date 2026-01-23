@@ -304,6 +304,127 @@ export const useSupabasePortfolio = () => {
     }
   };
 
+  /**
+   * Bulk import portfolio data (for import functionality)
+   * This saves imported data to Supabase database
+   * Handles duplicate detection to prevent redundant data
+   */
+  const bulkImportPortfolio = async (importedPortfolio, importedAccounts) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let stats = {
+        accountsCreated: 0,
+        portfoliosCreated: 0,
+        transactionsAdded: 0,
+        transactionsSkipped: 0,
+        dividendsAdded: 0,
+        dividendsSkipped: 0
+      };
+
+      // 1. Create accounts first
+      for (const accountName of importedAccounts) {
+        // Check if account already exists
+        const existingAccount = accounts.find(a => a.name === accountName);
+        if (!existingAccount) {
+          await createAccount(accountName);
+          stats.accountsCreated++;
+        }
+      }
+
+      // 2. Create portfolios with transactions
+      for (const asset of importedPortfolio) {
+        // Check if portfolio already exists
+        const existing = portfolio.find(
+          p => p.symbol === asset.symbol &&
+               p.account === asset.account &&
+               p.type === asset.type
+        );
+
+        if (existing) {
+          // Add only non-duplicate transactions to existing portfolio
+          for (const transaction of asset.transactions) {
+            // Check if transaction already exists (by date, quantity, and price)
+            const isDuplicate = existing.transactions?.some(existingTx => {
+              const sameDate = new Date(existingTx.date).toISOString().split('T')[0] ===
+                              new Date(transaction.date).toISOString().split('T')[0];
+              const sameQuantity = Math.abs(existingTx.quantity - transaction.quantity) < 0.0001;
+              const samePrice = Math.abs(existingTx.price - transaction.price) < 0.01;
+              return sameDate && sameQuantity && samePrice;
+            });
+
+            if (!isDuplicate) {
+              await createTransaction(existing.id, transaction);
+              stats.transactionsAdded++;
+            } else {
+              stats.transactionsSkipped++;
+            }
+          }
+
+          // Add only non-duplicate dividends if any
+          if (asset.dividends && asset.dividends.length > 0) {
+            for (const dividend of asset.dividends) {
+              // Check if dividend already exists (by date and amount)
+              const isDuplicate = existing.dividends?.some(existingDiv => {
+                const sameDate = new Date(existingDiv.date).toISOString().split('T')[0] ===
+                                new Date(dividend.date).toISOString().split('T')[0];
+                const sameAmount = Math.abs(existingDiv.amount - dividend.amount) < 0.01;
+                return sameDate && sameAmount;
+              });
+
+              if (!isDuplicate) {
+                await createDividend(existing.id, dividend);
+                stats.dividendsAdded++;
+              } else {
+                stats.dividendsSkipped++;
+              }
+            }
+          }
+        } else {
+          // Create new portfolio
+          const { data: newPortfolio, error: portfolioError } = await createPortfolio({
+            symbol: asset.symbol,
+            name: asset.name,
+            type: asset.type,
+            account: asset.account,
+            sector: asset.sector || ''
+          });
+
+          if (portfolioError) throw portfolioError;
+          stats.portfoliosCreated++;
+
+          // Add transactions
+          for (const transaction of asset.transactions) {
+            await createTransaction(newPortfolio.id, transaction);
+            stats.transactionsAdded++;
+          }
+
+          // Add dividends if any
+          if (asset.dividends && asset.dividends.length > 0) {
+            for (const dividend of asset.dividends) {
+              await createDividend(newPortfolio.id, dividend);
+              stats.dividendsAdded++;
+            }
+          }
+        }
+      }
+
+      // 3. Reload all data
+      await loadData();
+
+      // Log import stats
+      console.log('📊 Import Stats:', stats);
+
+      return { error: null, stats };
+    } catch (err) {
+      console.error('Error bulk importing:', err);
+      setError(err.message);
+      setLoading(false);
+      return { error: err };
+    }
+  };
+
   return {
     portfolio,
     setPortfolio,
@@ -328,6 +449,7 @@ export const useSupabasePortfolio = () => {
     deleteTransaction: deleteTransactionById,
     addDividend,
     deleteDividend: deleteDividendById,
-    refreshData: loadData
+    refreshData: loadData,
+    bulkImportPortfolio // For import functionality
   };
 };

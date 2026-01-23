@@ -19,7 +19,7 @@ import MobilePortfolioView from './components/mobile/MobilePortfolioView';
 import MobileInsightsView from './components/mobile/MobileInsightsView';
 import MobileAnalyticsView from './components/mobile/MobileAnalyticsView';
 import AuthPage from './components/Auth/AuthPage';
-import MigrationModal from './components/MigrationModal';
+// import MigrationModal from './components/MigrationModal'; // Disabled - uncomment if needed
 
 // ============================================================================
 // IMPORTS - Hooks
@@ -51,7 +51,7 @@ const App = () => {
     // AUTHENTICATION CHECK
     // ========================================================================
     const { user, loading: authLoading } = useAuth();
-    const [showMigration, setShowMigration] = useState(false);
+    // const [showMigration, setShowMigration] = useState(false); // Migration disabled
 
     // Check for Supabase environment variables
     const hasSupabaseConfig = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -84,6 +84,7 @@ const App = () => {
         deleteAsset,
         addAccount,
         deleteAccount,
+        bulkImportPortfolio, // For import functionality
         loading,
         error
     } = portfolioData;
@@ -663,7 +664,9 @@ const App = () => {
             setAccounts,
             setMarketPrices,
             setShowSettingsModal,
-            accounts
+            accounts,
+            bulkImportPortfolio,
+            useSupabase
         });
     };
 
@@ -690,8 +693,11 @@ const App = () => {
     };
 
     // ========================================================================
-    // MIGRATION CHECK
+    // MIGRATION CHECK - DISABLED
     // ========================================================================
+    // Migration is disabled. If you need to migrate localStorage data to Supabase,
+    // uncomment the code below and refresh the page.
+    /*
     useEffect(() => {
         if (useSupabase && !authLoading) {
             const migrated = localStorage.getItem(`${APP_ID}_migrated`);
@@ -702,6 +708,7 @@ const App = () => {
             }
         }
     }, [useSupabase, authLoading]);
+    */
 
     // ========================================================================
     // RENDER
@@ -724,7 +731,8 @@ const App = () => {
         return <AuthPage />;
     }
 
-    // Show migration modal if needed
+    // Migration modal disabled - uncomment if needed
+    /*
     if (showMigration) {
         return (
             <MigrationModal
@@ -737,6 +745,7 @@ const App = () => {
             />
         );
     }
+    */
 
     // Show loading for portfolio data
     if (loading) {

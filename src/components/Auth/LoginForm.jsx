@@ -47,17 +47,17 @@ const LoginForm = ({ onToggleMode, onSuccess }) => {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg">
-      <div className="flex items-center justify-center mb-6">
-        <div className="bg-indigo-100 p-3 rounded-full">
-          <LogIn className="w-8 h-8 text-indigo-600" />
+    <div className="w-full max-w-md mx-auto p-4 md:p-6 bg-white rounded-xl shadow-lg">
+      <div className="flex items-center justify-center mb-4">
+        <div className="bg-indigo-100 p-2 md:p-3 rounded-full">
+          <LogIn className="w-6 h-6 md:w-8 md:h-8 text-indigo-600" />
         </div>
       </div>
 
-      <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">
+      <h2 className="text-xl md:text-2xl font-bold text-center text-slate-800 mb-2">
         Welcome Back
       </h2>
-      <p className="text-center text-slate-600 mb-6">
+      <p className="text-sm md:text-base text-center text-slate-600 mb-4">
         Sign in to access your investment portfolio
       </p>
 

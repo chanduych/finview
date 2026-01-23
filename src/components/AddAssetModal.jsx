@@ -174,8 +174,8 @@ const AddAssetModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-            <div className="bg-white w-full max-w-full sm:max-w-md rounded-2xl md:rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in overflow-y-auto">
+            <div className="bg-white w-full max-w-full sm:max-w-md rounded-t-2xl md:rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[95vh] md:max-h-[90vh] flex flex-col my-auto md:my-0">
                 {/* Header */}
                 <div className="p-4 md:p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
                     <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight leading-none">

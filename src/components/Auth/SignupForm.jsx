@@ -75,12 +75,12 @@ const SignupForm = ({ onToggleMode, onSuccess }) => {
 
   if (success) {
     return (
-      <div className="w-full max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg">
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="bg-green-100 p-4 rounded-full mb-4">
-            <CheckCircle className="w-12 h-12 text-green-600" />
+      <div className="w-full max-w-md mx-auto p-4 md:p-6 bg-white rounded-xl shadow-lg">
+        <div className="flex flex-col items-center justify-center py-6 md:py-8">
+          <div className="bg-green-100 p-3 md:p-4 rounded-full mb-4">
+            <CheckCircle className="w-10 h-10 md:w-12 md:h-12 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+          <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2">
             Account Created!
           </h2>
           {error ? (
@@ -106,17 +106,17 @@ const SignupForm = ({ onToggleMode, onSuccess }) => {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg">
-      <div className="flex items-center justify-center mb-6">
-        <div className="bg-indigo-100 p-3 rounded-full">
-          <UserPlus className="w-8 h-8 text-indigo-600" />
+    <div className="w-full max-w-md mx-auto p-4 md:p-6 bg-white rounded-xl shadow-lg">
+      <div className="flex items-center justify-center mb-4">
+        <div className="bg-indigo-100 p-2 md:p-3 rounded-full">
+          <UserPlus className="w-6 h-6 md:w-8 md:h-8 text-indigo-600" />
         </div>
       </div>
 
-      <h2 className="text-2xl font-bold text-center text-slate-800 mb-2">
+      <h2 className="text-xl md:text-2xl font-bold text-center text-slate-800 mb-2">
         Create Account
       </h2>
-      <p className="text-center text-slate-600 mb-6">
+      <p className="text-sm md:text-base text-center text-slate-600 mb-4">
         Start tracking your investments today
       </p>
 

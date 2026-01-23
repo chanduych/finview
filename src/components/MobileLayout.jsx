@@ -22,25 +22,35 @@ const MobileLayout = ({
     const navItems = [
         { id: 'portfolio', icon: Home, label: 'Portfolio' },
         { id: 'insights', icon: TrendingUp, label: 'Insights' },
+        { id: 'add', icon: Plus, label: 'Add', isAction: true }, // Center action button
         { id: 'analytics', icon: PieChart, label: 'Analytics' },
         { id: 'settings', icon: Settings, label: 'Settings' }
     ];
 
     const handleNavClick = (viewId) => {
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(10);
+
+        // Handle special actions
+        if (viewId === 'add') {
+            if (navigator.vibrate) navigator.vibrate(20);
+            onQuickAdd();
+            return;
+        }
+
+        if (viewId === 'settings') {
+            onOpenSettings();
+            return;
+        }
+
+        // Handle view changes
         const currentIndex = navItems.findIndex(item => item.id === currentView);
         const newIndex = navItems.findIndex(item => item.id === viewId);
 
         setDirection(newIndex > currentIndex ? 'slide-left' : 'slide-right');
 
-        // Haptic feedback
-        if (navigator.vibrate) navigator.vibrate(10);
-
         setTimeout(() => {
-            if (viewId === 'settings') {
-                onOpenSettings();
-            } else {
-                onViewChange(viewId);
-            }
+            onViewChange(viewId);
         }, 50);
     };
 
@@ -54,45 +64,46 @@ const MobileLayout = ({
                 {children}
             </div>
 
-            {/* Floating Action Button (FAB) */}
-            <button
-                onClick={() => {
-                    if (navigator.vibrate) navigator.vibrate(20);
-                    onQuickAdd();
-                }}
-                className="fixed bottom-20 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-95 transition-transform hover:shadow-indigo-500/50"
-                aria-label="Quick Add Asset"
-            >
-                <Plus size={28} strokeWidth={3} />
-            </button>
-
             {/* Bottom Navigation Bar */}
             <nav className="bg-white border-t border-slate-200 safe-bottom">
-                <div className="grid grid-cols-4 h-16">
+                <div className="grid grid-cols-5 h-16 items-center px-2">
                     {navItems.map((item) => {
                         const Icon = item.icon;
                         const isActive = currentView === item.id;
+                        const isAddButton = item.isAction;
 
                         return (
                             <button
                                 key={item.id}
                                 onClick={() => handleNavClick(item.id)}
-                                className={`flex flex-col items-center justify-center gap-1 transition-all ${
-                                    isActive
+                                className={`flex flex-col items-center justify-center gap-1 transition-all relative ${
+                                    isAddButton
+                                        ? 'transform -translate-y-3'
+                                        : isActive
                                         ? 'text-indigo-600'
                                         : 'text-slate-400 active:text-slate-600'
                                 }`}
                             >
-                                <div className={`transition-transform ${isActive ? 'scale-110' : 'scale-100'}`}>
-                                    <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
-                                </div>
-                                <span className={`text-[10px] font-bold ${
-                                    isActive ? 'font-black' : 'font-semibold'
-                                }`}>
-                                    {item.label}
-                                </span>
-                                {isActive && (
-                                    <div className="absolute bottom-0 w-12 h-1 bg-indigo-600 rounded-t-full" />
+                                {isAddButton ? (
+                                    // Elevated Add Button
+                                    <div className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-transform">
+                                        <Icon size={28} strokeWidth={3} />
+                                    </div>
+                                ) : (
+                                    // Regular Nav Buttons
+                                    <>
+                                        <div className={`transition-transform ${isActive ? 'scale-110' : 'scale-100'}`}>
+                                            <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                                        </div>
+                                        <span className={`text-[10px] font-bold ${
+                                            isActive ? 'font-black' : 'font-semibold'
+                                        }`}>
+                                            {item.label}
+                                        </span>
+                                        {isActive && (
+                                            <div className="absolute bottom-0 w-12 h-1 bg-indigo-600 rounded-t-full" />
+                                        )}
+                                    </>
                                 )}
                             </button>
                         );
