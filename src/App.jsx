@@ -88,7 +88,7 @@ const App = () => {
         error
     } = portfolioData;
 
-    const { isRefreshing, refreshAllPrices } = useMarketData(portfolio, setMarketPrices);
+    const { isRefreshing, refreshAllPrices } = useMarketData(portfolio, setMarketPrices, loading);
 
     // ========================================================================
     // STATE MANAGEMENT - UI State
