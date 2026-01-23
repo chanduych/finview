@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { RefreshCw, Search, Filter, X, Check } from 'lucide-react';
+import { RefreshCw, Search, Filter, X, Check, LogOut } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import MobileAssetCard from '../MobileAssetCard';
 import MobilePortfolioSummaryCard from './MobilePortfolioSummaryCard';
 import MobileEmptyState from './MobileEmptyState';
@@ -42,6 +43,21 @@ const MobilePortfolioView = ({
         selectedView === 'ALL' ? ['STOCK', 'MF', 'ETF'] : [selectedView]
     );
 
+    // Get auth context
+    const { user, signOut } = useAuth();
+
+    // Personalized name - extract from email
+    const getDisplayName = () => {
+        if (user?.email) {
+            const emailName = user.email.split('@')[0];
+            // Capitalize first letter
+            return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+        }
+        return 'User'; // Fallback (but shouldn't be shown if no user)
+    };
+
+    const displayName = getDisplayName();
+
     // Check if portfolio is empty
     const isEmptyPortfolio = filteredPortfolio.length === 0 && !tableFilter && selectedView === 'ALL';
 
@@ -53,21 +69,32 @@ const MobilePortfolioView = ({
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-lg font-black text-slate-800">
-                                My Portfolio
+                                {displayName}'s Portfolio
                             </h1>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                Chandu's Investments
+                                Personal Investments
                             </p>
                         </div>
-                        <button
-                            onClick={onRefresh}
-                            disabled={isRefreshing}
-                            className={`p-3 rounded-xl bg-indigo-50 text-indigo-600 active:bg-indigo-100 transition-all ${
-                                isRefreshing ? 'animate-spin' : ''
-                            }`}
-                        >
-                            <RefreshCw size={20} />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {user && (
+                                <button
+                                    onClick={signOut}
+                                    className="p-3 rounded-xl bg-red-50 text-red-600 active:bg-red-100 transition-all"
+                                    aria-label="Sign out"
+                                >
+                                    <LogOut size={18} />
+                                </button>
+                            )}
+                            <button
+                                onClick={onRefresh}
+                                disabled={isRefreshing}
+                                className={`p-3 rounded-xl bg-indigo-50 text-indigo-600 active:bg-indigo-100 transition-all ${
+                                    isRefreshing ? 'animate-spin' : ''
+                                }`}
+                            >
+                                <RefreshCw size={20} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 

@@ -77,6 +77,8 @@ export const usePortfolio = () => {
     updateAsset,
     deleteAsset,
     addAccount,
-    deleteAccount
+    deleteAccount,
+    loading: false, // localStorage is synchronous, no loading state
+    error: null // localStorage doesn't have network errors
   };
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 // ============================================================================
 // IMPORTS - Components
@@ -18,12 +18,16 @@ import MobileLayout from './components/MobileLayout';
 import MobilePortfolioView from './components/mobile/MobilePortfolioView';
 import MobileInsightsView from './components/mobile/MobileInsightsView';
 import MobileAnalyticsView from './components/mobile/MobileAnalyticsView';
+import AuthPage from './components/Auth/AuthPage';
+import MigrationModal from './components/MigrationModal';
 
 // ============================================================================
 // IMPORTS - Hooks
 // ============================================================================
 import { usePortfolio } from './hooks/usePortfolio';
+import { useSupabasePortfolio } from './hooks/useSupabasePortfolio';
 import { useMarketData } from './hooks/useMarketData';
+import { useAuth } from './contexts/AuthContext';
 
 // ============================================================================
 // IMPORTS - Utils & Constants
@@ -31,9 +35,9 @@ import { useMarketData } from './hooks/useMarketData';
 import { formatCurrency, formatCurrencyWithDecimals } from './utils/formatters';
 import { calculateXIRR, calculateCapitalGains } from './utils/calculations';
 import { handleExport, handleImport, getYearWiseSummary } from './utils/importExport';
-import { COLORS } from './constants/appConfig';
+import { COLORS, APP_ID } from './constants/appConfig';
 import { TAX_RATES, LTCG_EXEMPTION } from './constants/taxConfig';
-import { TrendingUp, PieChart, AlertTriangle, TrendingDown, BarChart3 } from 'lucide-react';
+import { TrendingUp, PieChart, AlertTriangle, TrendingDown, BarChart3, Loader2 } from 'lucide-react';
 import xirr from 'xirr';
 
 /**
@@ -44,8 +48,26 @@ import xirr from 'xirr';
  */
 const App = () => {
     // ========================================================================
+    // AUTHENTICATION CHECK
+    // ========================================================================
+    const { user, loading: authLoading } = useAuth();
+    const [showMigration, setShowMigration] = useState(false);
+
+    // Check for Supabase environment variables
+    const hasSupabaseConfig = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    // ========================================================================
     // STATE MANAGEMENT - Portfolio & Market Data
     // ========================================================================
+    // Always call both hooks (can't conditionally call hooks)
+    const localStorageData = usePortfolio();
+    const supabaseData = useSupabasePortfolio();
+
+    // Choose which data source to use based on config and auth
+    const useSupabase = hasSupabaseConfig && user;
+    const portfolioData = useSupabase ? supabaseData : localStorageData;
+
+    // Destructure the chosen data
     const {
         portfolio,
         setPortfolio,
@@ -61,8 +83,10 @@ const App = () => {
         updateAsset,
         deleteAsset,
         addAccount,
-        deleteAccount
-    } = usePortfolio();
+        deleteAccount,
+        loading,
+        error
+    } = portfolioData;
 
     const { isRefreshing, refreshAllPrices } = useMarketData(portfolio, setMarketPrices);
 
@@ -666,8 +690,86 @@ const App = () => {
     };
 
     // ========================================================================
+    // MIGRATION CHECK
+    // ========================================================================
+    useEffect(() => {
+        if (useSupabase && !authLoading) {
+            const migrated = localStorage.getItem(`${APP_ID}_migrated`);
+            const hasLocalData = localStorage.getItem(`${APP_ID}_portfolio`);
+
+            if (!migrated && hasLocalData) {
+                setShowMigration(true);
+            }
+        }
+    }, [useSupabase, authLoading]);
+
+    // ========================================================================
     // RENDER
     // ========================================================================
+
+    // Show auth loading
+    if (authLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-slate-50">
+                <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
+                    <p className="text-slate-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show auth page if Supabase is configured but user is not authenticated
+    if (hasSupabaseConfig && !user) {
+        return <AuthPage />;
+    }
+
+    // Show migration modal if needed
+    if (showMigration) {
+        return (
+            <MigrationModal
+                isOpen={showMigration}
+                onClose={() => setShowMigration(false)}
+                onComplete={() => {
+                    setShowMigration(false);
+                    window.location.reload();
+                }}
+            />
+        );
+    }
+
+    // Show loading for portfolio data
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-slate-50">
+                <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
+                    <p className="text-slate-600">Loading your portfolio...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show error if portfolio data failed to load
+    if (error) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-slate-50">
+                <div className="text-center max-w-md p-6 bg-white rounded-xl shadow-lg">
+                    <div className="text-red-600 mb-4">
+                        <AlertTriangle className="w-12 h-12 mx-auto" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Error Loading Portfolio</h2>
+                    <p className="text-slate-600 mb-4">{error}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // Render mobile view content
     const renderMobileView = () => {

@@ -12,10 +12,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import { AuthProvider } from './contexts/AuthContext'
 import './index.css' // <--- THIS LINE IS MANDATORY TO LOAD CSS
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </React.StrictMode>,
 )
