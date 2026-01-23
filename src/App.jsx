@@ -67,6 +67,18 @@ const App = () => {
     const useSupabase = hasSupabaseConfig && user;
     const portfolioData = useSupabase ? supabaseData : localStorageData;
 
+    // Debug: Log data source info (only in development)
+    useEffect(() => {
+        console.log('📊 Data Source Info:', {
+            hasSupabaseConfig,
+            userEmail: user?.email || 'Not logged in',
+            useSupabase,
+            dataSource: useSupabase ? 'Supabase (Database)' : 'LocalStorage',
+            portfolioCount: portfolio.length,
+            accountsCount: accounts.length
+        });
+    }, [useSupabase, user, portfolio.length, accounts.length]);
+
     // Destructure the chosen data
     const {
         portfolio,
@@ -100,6 +112,19 @@ const App = () => {
     const [showReportsModal, setShowReportsModal] = useState(false);
     const [tableFilter, setTableFilter] = useState('');
     const [expandedAsset, setExpandedAsset] = useState(null);
+
+    // Sync activeAccounts with accounts when accounts load or change
+    useEffect(() => {
+        // When accounts load, update activeAccounts if it's empty or outdated
+        if (accounts.length > 0 && activeAccounts.length === 0) {
+            setActiveAccounts(accounts);
+        }
+        // Also update if new accounts are added that aren't in activeAccounts
+        const newAccounts = accounts.filter(acc => !activeAccounts.includes(acc));
+        if (newAccounts.length > 0) {
+            setActiveAccounts(prev => [...prev, ...newAccounts]);
+        }
+    }, [accounts]);
 
     // Mobile navigation state
     const [mobileView, setMobileView] = useState('portfolio');

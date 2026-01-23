@@ -70,6 +70,21 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
     } catch (error) {
       console.error('Error signing out:', error);
+
+      // If session is missing or invalid, clear local state anyway
+      if (error.message?.includes('session') || error.message?.includes('Session')) {
+        console.log('Session already invalid, clearing local state...');
+        setSession(null);
+        setUser(null);
+
+        // Clear any lingering Supabase auth data from localStorage
+        const keys = Object.keys(localStorage);
+        keys.forEach(key => {
+          if (key.startsWith('sb-') || key.includes('supabase')) {
+            localStorage.removeItem(key);
+          }
+        });
+      }
     }
   };
 
