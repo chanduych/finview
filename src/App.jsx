@@ -67,18 +67,6 @@ const App = () => {
     const useSupabase = hasSupabaseConfig && user;
     const portfolioData = useSupabase ? supabaseData : localStorageData;
 
-    // Debug: Log data source info (only in development)
-    useEffect(() => {
-        console.log('📊 Data Source Info:', {
-            hasSupabaseConfig,
-            userEmail: user?.email || 'Not logged in',
-            useSupabase,
-            dataSource: useSupabase ? 'Supabase (Database)' : 'LocalStorage',
-            portfolioCount: portfolio.length,
-            accountsCount: accounts.length
-        });
-    }, [useSupabase, user, portfolio.length, accounts.length]);
-
     // Destructure the chosen data
     const {
         portfolio,
@@ -101,6 +89,18 @@ const App = () => {
         error
     } = portfolioData;
 
+    // Debug: Log data source info (only in development)
+    useEffect(() => {
+        console.log('📊 Data Source Info:', {
+            hasSupabaseConfig,
+            userEmail: user?.email || 'Not logged in',
+            useSupabase,
+            dataSource: useSupabase ? 'Supabase (Database)' : 'LocalStorage',
+            portfolioCount: portfolio.length,
+            accountsCount: accounts.length
+        });
+    }, [useSupabase, user, portfolio.length, accounts.length]);
+
     const { isRefreshing, refreshAllPrices } = useMarketData(portfolio, setMarketPrices, loading);
 
     // ========================================================================
@@ -116,13 +116,19 @@ const App = () => {
     // Sync activeAccounts with accounts when accounts load or change
     useEffect(() => {
         // When accounts load, update activeAccounts if it's empty or outdated
-        if (accounts.length > 0 && activeAccounts.length === 0) {
-            setActiveAccounts(accounts);
-        }
-        // Also update if new accounts are added that aren't in activeAccounts
-        const newAccounts = accounts.filter(acc => !activeAccounts.includes(acc));
-        if (newAccounts.length > 0) {
-            setActiveAccounts(prev => [...prev, ...newAccounts]);
+        if (accounts.length > 0) {
+            setActiveAccounts(prev => {
+                // If no active accounts yet, use all accounts
+                if (prev.length === 0) {
+                    return accounts;
+                }
+                // Add any new accounts that aren't already active
+                const newAccounts = accounts.filter(acc => !prev.includes(acc));
+                if (newAccounts.length > 0) {
+                    return [...prev, ...newAccounts];
+                }
+                return prev;
+            });
         }
     }, [accounts]);
 

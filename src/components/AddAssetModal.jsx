@@ -71,17 +71,23 @@ const AddAssetModal = ({
         let type = selectedAssetType;
         if (type === 'STOCK' && /^\d+$/.test(symbol)) type = 'MF';
 
+        console.log(`🔍 Verifying symbol: ${symbol}, type: ${type}`);
+
         try {
             const data = await verifySymbol(symbol, type);
+            console.log(`✅ Verification result for ${symbol}:`, data);
+
             if (data) {
                 setPreviewPrice(data.price);
                 setBuyPrice(data.price.toString());
                 if (data.name) setSelectedAssetName(data.name);
+                console.log(`✅ Buy price set to: ${data.price}`);
             } else {
+                console.log(`❌ Verification failed for ${symbol}`);
                 setPreviewPrice('Invalid');
             }
         } catch (error) {
-            console.error('Verify symbol error:', error);
+            console.error('❌ Verify symbol error:', error);
             setPreviewPrice('Invalid');
         } finally {
             setVerifyLoading(false);
@@ -174,11 +180,11 @@ const AddAssetModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in overflow-y-auto">
-            <div className="bg-white w-full max-w-full sm:max-w-md rounded-t-2xl md:rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[95vh] md:max-h-[90vh] flex flex-col my-auto md:my-0">
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+            <div className="bg-white w-full max-w-full sm:max-w-md rounded-t-2xl md:rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[92vh] md:max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="p-4 md:p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
-                    <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight leading-none">
+                <div className="p-3 md:p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
+                    <h2 className="text-lg md:text-2xl font-black text-slate-800 tracking-tight leading-none">
                         Add Investment
                     </h2>
                     <button
@@ -191,14 +197,14 @@ const AddAssetModal = ({
                 </div>
 
                 {/* Content - Scrollable */}
-                <div className="p-4 md:p-8 space-y-5 md:space-y-6 overflow-y-auto flex-1">
+                <div className="p-3 md:p-8 space-y-4 md:space-y-6 overflow-y-auto flex-1">
                     {/* Account Selection */}
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
                             Account Wallet
                         </label>
                         <select
-                            className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
+                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
                             value={selectedAccount}
                             onChange={e => setSelectedAccount(e.target.value)}
                         >
@@ -214,7 +220,7 @@ const AddAssetModal = ({
                             Asset Type
                         </label>
                         <select
-                            className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
+                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
                             value={selectedAssetType}
                             onChange={e => {
                                 setSelectedAssetType(e.target.value);
@@ -240,12 +246,12 @@ const AddAssetModal = ({
                                 <input
                                     type="text"
                                     placeholder={
-                                        selectedAssetType === 'STOCK' ? 'Search stocks (e.g. RELIANCE, TCS...)' :
-                                        selectedAssetType === 'ETF' ? 'Search ETFs (e.g. NIFTYBEES...)' :
-                                        selectedAssetType === 'MF' ? 'Search MFs (e.g. Quant, Parag...)' :
-                                        'Search asset name or symbol'
+                                        selectedAssetType === 'STOCK' ? 'Search stocks...' :
+                                        selectedAssetType === 'ETF' ? 'Search ETFs...' :
+                                        selectedAssetType === 'MF' ? 'Search MFs...' :
+                                        'Search asset...'
                                     }
-                                    className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold uppercase pr-10 text-sm md:text-base min-h-[44px]"
+                                    className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold uppercase pr-10 text-sm md:text-base min-h-[44px]"
                                     value={searchQuery}
                                     onChange={e => {
                                         const value = e.target.value;
@@ -257,10 +263,10 @@ const AddAssetModal = ({
                                     }}
                                 />
                                 {isSearching && (
-                                    <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-slate-400" size={16} />
+                                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" size={16} />
                                 )}
                                 {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" title="No results found">
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" title="No results found">
                                         <SearchIcon size={16} />
                                     </div>
                                 )}
@@ -268,7 +274,7 @@ const AddAssetModal = ({
                             <button
                                 onClick={() => handleVerifySymbol()}
                                 disabled={verifyLoading || !searchQuery}
-                                className="px-3 md:px-4 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl md:rounded-2xl hover:bg-indigo-100 transition-all disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+                                className="px-3 md:px-4 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl md:rounded-2xl hover:bg-indigo-100 transition-all disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation shrink-0"
                                 aria-label="Verify symbol"
                             >
                                 {verifyLoading ? (
@@ -352,7 +358,7 @@ const AddAssetModal = ({
                     </div>
 
                     {/* Quantity and Buy Price */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-4">
+                    <div className="grid grid-cols-2 gap-3 md:gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
                                 Quantity
@@ -360,7 +366,7 @@ const AddAssetModal = ({
                             <input
                                 type="number"
                                 placeholder="0"
-                                className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
                                 value={quantity}
                                 onChange={e => setQuantity(e.target.value)}
                             />
@@ -372,7 +378,7 @@ const AddAssetModal = ({
                             <input
                                 type="number"
                                 placeholder="0"
-                                className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
                                 value={buyPrice}
                                 onChange={e => setBuyPrice(e.target.value)}
                             />
@@ -386,7 +392,7 @@ const AddAssetModal = ({
                         </label>
                         <input
                             type="date"
-                            className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
                             value={buyDate}
                             onChange={e => setBuyDate(e.target.value)}
                         />
@@ -400,8 +406,8 @@ const AddAssetModal = ({
                             </label>
                             <input
                                 type="text"
-                                placeholder="e.g. IT, Banking, Pharma..."
-                                className="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                placeholder="e.g. IT, Banking..."
+                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
                                 value={sector}
                                 onChange={e => setSector(e.target.value)}
                             />
@@ -412,7 +418,7 @@ const AddAssetModal = ({
                     <button
                         onClick={handleAddAsset}
                         disabled={addStatus === 'loading' || !searchQuery || !buyPrice || !quantity}
-                        className={`w-full py-4 md:py-5 rounded-2xl md:rounded-[2rem] font-black text-white shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2 min-h-[52px] touch-manipulation ${
+                        className={`w-full py-3.5 md:py-5 rounded-xl md:rounded-[2rem] font-black text-white shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2 min-h-[52px] touch-manipulation ${
                             addStatus === 'success'
                                 ? 'bg-emerald-500'
                                 : 'bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed'
