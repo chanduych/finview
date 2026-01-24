@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 
 // ============================================================================
 // IMPORTS - Components
@@ -107,25 +107,38 @@ const App = () => {
     // STATE MANAGEMENT - UI State
     // ========================================================================
     const [activeAccounts, setActiveAccounts] = useState(accounts);
+    const [activeAssetTypes, setActiveAssetTypes] = useState(['STOCK', 'MF', 'ETF']);
     const [showAddModal, setShowAddModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showReportsModal, setShowReportsModal] = useState(false);
     const [tableFilter, setTableFilter] = useState('');
     const [expandedAsset, setExpandedAsset] = useState(null);
 
-    // Sync activeAccounts with accounts when accounts load or change
+    // Track if accounts have been initially loaded
+    const accountsInitialized = useRef(false);
+    
+    // Sync activeAccounts with accounts ONLY on initial load or when new accounts are added
     useEffect(() => {
-        // When accounts load, update activeAccounts if it's empty or outdated
         if (accounts.length > 0) {
             setActiveAccounts(prev => {
-                // If no active accounts yet, use all accounts
-                if (prev.length === 0) {
-                    return accounts;
+                // First load - set to all accounts
+                if (!accountsInitialized.current) {
+                    accountsInitialized.current = true;
+                    return [...accounts];
                 }
-                // Add any new accounts that aren't already active
+                // If user has no active accounts, reset to all
+                if (prev.length === 0) {
+                    return [...accounts];
+                }
+                // Only add new accounts that don't exist yet (don't remove filtered ones)
                 const newAccounts = accounts.filter(acc => !prev.includes(acc));
                 if (newAccounts.length > 0) {
                     return [...prev, ...newAccounts];
+                }
+                // Remove any accounts that no longer exist
+                const validAccounts = prev.filter(acc => accounts.includes(acc));
+                if (validAccounts.length !== prev.length) {
+                    return validAccounts.length > 0 ? validAccounts : [...accounts];
                 }
                 return prev;
             });
@@ -148,8 +161,6 @@ const App = () => {
     const [assetMenuOpen, setAssetMenuOpen] = useState(null);
 
     // Asset editing state
-    const [editingId, setEditingId] = useState(null);
-    const [editValue, setEditValue] = useState('');
     const [editingTransaction, setEditingTransaction] = useState(null);
 
     // P&L view toggle state ('total' or '1day')
@@ -213,18 +224,22 @@ const App = () => {
     }, [portfolio, marketPrices]);
 
     /**
-     * Filter portfolio based on active accounts, selected view, and search
+     * Filter portfolio based on active accounts, active asset types, selected view, and search
      */
     const filteredPortfolio = useMemo(() => {
         return processedPortfolio.filter(p => {
             const matchesAccount = activeAccounts.includes(p.account);
-            const matchesType = selectedView === 'ALL' || p.type === selectedView;
+            // When selectedView is 'ALL', filter by activeAssetTypes array
+            // When selectedView is a specific type, filter by that type
+            const matchesType = selectedView === 'ALL' 
+                ? activeAssetTypes.includes(p.type) 
+                : p.type === selectedView;
             const matchesSearch = p.symbol.toLowerCase().includes(tableFilter.toLowerCase()) ||
                                 (p.name && p.name.toLowerCase().includes(tableFilter.toLowerCase())) ||
                                 p.account.toLowerCase().includes(tableFilter.toLowerCase());
             return matchesAccount && matchesType && matchesSearch;
         });
-    }, [processedPortfolio, activeAccounts, selectedView, tableFilter]);
+    }, [processedPortfolio, activeAccounts, activeAssetTypes, selectedView, tableFilter]);
 
     /**
      * Group portfolio by asset type for "ALL" view
@@ -356,10 +371,12 @@ const App = () => {
         const monthsToShow = 120; // Generate all months (10 years max)
         const data = [];
 
-        // Filter portfolio by active accounts and selected view
+        // Filter portfolio by active accounts, active asset types, and selected view
         const portfolioToUse = portfolio.filter(asset => {
             const matchesAccount = activeAccounts.includes(asset.account);
-            const matchesType = selectedView === 'ALL' || asset.type === selectedView;
+            const matchesType = selectedView === 'ALL' 
+                ? activeAssetTypes.includes(asset.type) 
+                : asset.type === selectedView;
             return matchesAccount && matchesType;
         });
 
@@ -387,7 +404,7 @@ const App = () => {
         }
 
         return data.length > 0 ? data : [{ month: 'No data', invested: 0 }];
-    }, [portfolio, activeAccounts, selectedView]);
+    }, [portfolio, activeAccounts, activeAssetTypes, selectedView]);
 
     // ========================================================================
     // COMPUTED VALUES - Portfolio Insights
@@ -534,18 +551,17 @@ const App = () => {
      */
     const handleAddAsset = (assetData) => {
         const existingAsset = portfolio.find(
-            p => p.symbol === assetData.symbol &&
+            p => p.symbol.toUpperCase() === assetData.symbol.toUpperCase() &&
                  p.account === assetData.account &&
                  p.type === assetData.type
         );
 
         if (existingAsset) {
-            // Add transaction to existing asset
-            const updatedAsset = {
-                ...existingAsset,
+            // Add transaction to existing asset - only pass the transactions update
+            updateAsset(existingAsset.id, {
                 transactions: [...existingAsset.transactions, assetData.transaction]
-            };
-            updateAsset(existingAsset.id, updatedAsset);
+            });
+            console.log('📝 Added transaction to existing asset:', existingAsset.symbol);
         } else {
             // Create new asset
             addAsset({
@@ -557,6 +573,7 @@ const App = () => {
                 transactions: [assetData.transaction],
                 dividends: []
             });
+            console.log('✨ Created new asset:', assetData.symbol);
         }
     };
 
@@ -579,8 +596,11 @@ const App = () => {
 
     /**
      * Handle adding a transaction to an existing asset
+     * @param {Object} assetOrId - Asset object or asset ID
+     * @param {Object} transaction - Transaction data
      */
-    const handleAddTransaction = (assetId, transaction) => {
+    const handleAddTransaction = (assetOrId, transaction) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
         if (asset) {
             updateAsset(assetId, {
@@ -591,12 +611,16 @@ const App = () => {
 
     /**
      * Handle updating a transaction
+     * @param {Object} assetOrId - Asset object or asset ID
+     * @param {Object} transactionData - Transaction data with id and updates
      */
-    const handleUpdateTransaction = (assetId, transactionId, updates) => {
+    const handleUpdateTransaction = (assetOrId, transactionData) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
+        const transactionId = transactionData.id;
         const asset = portfolio.find(p => p.id === assetId);
         if (asset) {
             const updatedTransactions = asset.transactions.map(tx =>
-                tx.id === transactionId ? { ...tx, ...updates } : tx
+                tx.id === transactionId ? { ...tx, ...transactionData } : tx
             );
             updateAsset(assetId, { transactions: updatedTransactions });
         }
@@ -604,8 +628,11 @@ const App = () => {
 
     /**
      * Handle deleting a transaction
+     * @param {Object} assetOrId - Asset object or asset ID
+     * @param {string|number} transactionId - Transaction ID
      */
-    const handleDeleteTransaction = (assetId, transactionId) => {
+    const handleDeleteTransaction = (assetOrId, transactionId) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
         if (asset) {
             const updatedTransactions = asset.transactions.filter(tx => tx.id !== transactionId);
@@ -621,8 +648,11 @@ const App = () => {
 
     /**
      * Handle adding a dividend to an asset
+     * @param {Object} assetOrId - Asset object or asset ID
+     * @param {Object} dividend - Dividend data
      */
-    const handleAddDividend = (assetId, dividend) => {
+    const handleAddDividend = (assetOrId, dividend) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
         if (asset) {
             updateAsset(assetId, {
@@ -633,8 +663,11 @@ const App = () => {
 
     /**
      * Handle deleting a dividend
+     * @param {Object} assetOrId - Asset object or asset ID
+     * @param {string|number} dividendId - Dividend ID
      */
-    const handleDeleteDividend = (assetId, dividendId) => {
+    const handleDeleteDividend = (assetOrId, dividendId) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
         if (asset) {
             const updatedDividends = (asset.dividends || []).filter(d => d.id !== dividendId);
@@ -820,8 +853,8 @@ const App = () => {
                     accounts={accounts}
                     activeAccounts={activeAccounts}
                     setActiveAccounts={setActiveAccounts}
-                    selectedView={selectedView}
-                    setSelectedView={setSelectedView}
+                    activeAssetTypes={activeAssetTypes}
+                    setActiveAssetTypes={setActiveAssetTypes}
                 />;
             case 'analytics':
                 return <MobileAnalyticsView 
@@ -829,8 +862,8 @@ const App = () => {
                     accounts={accounts}
                     activeAccounts={activeAccounts}
                     setActiveAccounts={setActiveAccounts}
-                    selectedView={selectedView}
-                    setSelectedView={setSelectedView}
+                    activeAssetTypes={activeAssetTypes}
+                    setActiveAssetTypes={setActiveAssetTypes}
                 />;
             case 'portfolio':
             default:
@@ -861,6 +894,8 @@ const App = () => {
                         accounts={accounts}
                         activeAccounts={activeAccounts}
                         setActiveAccounts={setActiveAccounts}
+                        activeAssetTypes={activeAssetTypes}
+                        setActiveAssetTypes={setActiveAssetTypes}
                     />
                 );
         }
@@ -944,10 +979,6 @@ const App = () => {
                     setMarketPrices={setMarketPrices}
                     assetMenuOpen={assetMenuOpen}
                     setAssetMenuOpen={setAssetMenuOpen}
-                    editingId={editingId}
-                    setEditingId={setEditingId}
-                    editValue={editValue}
-                    setEditValue={setEditValue}
                     editingTransaction={editingTransaction}
                     setEditingTransaction={setEditingTransaction}
                     pnlView={pnlView}

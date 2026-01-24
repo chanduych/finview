@@ -27,20 +27,12 @@ import xirr from 'xirr';
  * @param {Function} props.setExpandedGroups - Function to update expanded groups
  * @param {string|null} props.expandedAsset - ID of currently expanded asset
  * @param {Function} props.setExpandedAsset - Function to set expanded asset
- * @param {Object} props.marketPrices - Market prices lookup
- * @param {Function} props.setMarketPrices - Function to update market prices
- * @param {string|null} props.editingId - ID of asset being edited
- * @param {Function} props.setEditingId - Function to set editing ID
- * @param {string} props.editValue - Current edit value
- * @param {Function} props.setEditValue - Function to set edit value
  * @param {string|null} props.assetMenuOpen - ID of asset with open menu
  * @param {Function} props.setAssetMenuOpen - Function to set open menu
- * @param {Function} props.setAssetToDelete - Function to set asset for deletion
  * @param {Object|null} props.editingTransaction - Currently editing transaction
  * @param {Function} props.setEditingTransaction - Function to set editing transaction
  * @param {Array} props.portfolio - Full portfolio array
  * @param {Function} props.setPortfolio - Function to update portfolio
- * @param {Function} props.xirr - XIRR calculation function
  */
 const HoldingsTable = ({
     selectedView,
@@ -52,10 +44,6 @@ const HoldingsTable = ({
     setExpandedAsset,
     assetMenuOpen,
     setAssetMenuOpen,
-    editingId,
-    setEditingId,
-    editValue,
-    setEditValue,
     editingTransaction,
     setEditingTransaction,
     pnlView,
@@ -250,14 +238,8 @@ const HoldingsTable = ({
                             pnlView={pnlView}
                             expandedAsset={expandedAsset}
                             setExpandedAsset={setExpandedAsset}
-                            marketPrices={marketPrices}
-                            setMarketPrices={setMarketPrices}
                             assetMenuOpen={assetMenuOpen}
                             setAssetMenuOpen={setAssetMenuOpen}
-                            editingId={editingId}
-                            setEditingId={setEditingId}
-                            editValue={editValue}
-                            setEditValue={setEditValue}
                             editingTransaction={editingTransaction}
                             setEditingTransaction={setEditingTransaction}
                             onUpdateAsset={onUpdateAsset}
@@ -290,14 +272,8 @@ const HoldingsTable = ({
                 pnlView={pnlView}
                 expandedAsset={expandedAsset}
                 setExpandedAsset={setExpandedAsset}
-                marketPrices={marketPrices}
-                setMarketPrices={setMarketPrices}
                 assetMenuOpen={assetMenuOpen}
                 setAssetMenuOpen={setAssetMenuOpen}
-                editingId={editingId}
-                setEditingId={setEditingId}
-                editValue={editValue}
-                setEditValue={setEditValue}
                 editingTransaction={editingTransaction}
                 setEditingTransaction={setEditingTransaction}
                 onUpdateAsset={onUpdateAsset}

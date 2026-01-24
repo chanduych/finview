@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getAccounts,
@@ -42,20 +42,20 @@ export const useSupabasePortfolio = () => {
     loadData();
   }, [user]);
 
-  // Setup realtime subscriptions
+  // Setup realtime subscriptions - use silent refresh to avoid full page reload
   useEffect(() => {
     if (!user) return;
 
     const portfoliosChannel = subscribeToPortfolios(user.id, (payload) => {
       console.log('Portfolio change detected:', payload);
-      // Reload data when changes detected
-      loadData();
+      // Silent refresh - don't show loading spinner
+      refreshData();
     });
 
     const transactionsChannel = subscribeToTransactions(user.id, (payload) => {
       console.log('Transaction change detected:', payload);
-      // Reload data when changes detected
-      loadData();
+      // Silent refresh - don't show loading spinner
+      refreshData();
     });
 
     return () => {
@@ -65,7 +65,7 @@ export const useSupabasePortfolio = () => {
   }, [user]);
 
   /**
-   * Load all data from Supabase
+   * Load all data from Supabase (initial load - shows loading spinner)
    */
   const loadData = async () => {
     try {
@@ -87,6 +87,29 @@ export const useSupabasePortfolio = () => {
       console.error('Error loading data:', err);
       setError(err.message);
       setLoading(false);
+    }
+  };
+
+  /**
+   * Silent refresh - reload data without showing loading spinner
+   * Used for realtime updates and after mutations
+   */
+  const refreshData = async () => {
+    try {
+      // Don't set loading = true to avoid full page refresh effect
+      
+      // Load accounts
+      const { data: accountsData, error: accountsError } = await getAccounts();
+      if (accountsError) throw accountsError;
+      setAccounts(accountsData || []);
+
+      // Load portfolios
+      const { data: portfoliosData, error: portfoliosError } = await getPortfolios();
+      if (portfoliosError) throw portfoliosError;
+      setPortfolio(portfoliosData || []);
+    } catch (err) {
+      console.error('Error refreshing data:', err);
+      // Don't set error state for silent refresh - just log it
     }
   };
 
@@ -128,7 +151,7 @@ export const useSupabasePortfolio = () => {
       }
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error adding asset:', err);
@@ -141,15 +164,86 @@ export const useSupabasePortfolio = () => {
    */
   const updateAsset = async (id, updates) => {
     try {
-      // If updating transactions, handle separately
+      // If updating transactions, handle by diffing and syncing
       if (updates.transactions) {
-        // This is complex - for now, we'll just reload
-        // In a real implementation, you'd diff the transactions
-        await loadData();
+        const existingAsset = portfolio.find(p => p.id === id);
+        if (!existingAsset) {
+          throw new Error('Asset not found');
+        }
+
+        const existingTxIds = new Set((existingAsset.transactions || []).map(tx => tx.id));
+        const newTxIds = new Set((updates.transactions || []).map(tx => tx.id));
+
+        // Find transactions to add (in updates but not in existing)
+        const toAdd = updates.transactions.filter(tx => !existingTxIds.has(tx.id));
+        
+        // Find transactions to delete (in existing but not in updates)
+        const toDelete = (existingAsset.transactions || []).filter(tx => !newTxIds.has(tx.id));
+        
+        // Find transactions to update (in both - compare values)
+        const toUpdate = updates.transactions.filter(tx => {
+          if (!existingTxIds.has(tx.id)) return false;
+          const existingTx = existingAsset.transactions.find(t => t.id === tx.id);
+          return existingTx && (
+            existingTx.price !== tx.price ||
+            existingTx.quantity !== tx.quantity ||
+            existingTx.date !== tx.date
+          );
+        });
+
+        // Execute operations
+        for (const tx of toAdd) {
+          await createTransaction(id, tx);
+        }
+        
+        for (const tx of toDelete) {
+          await deleteTransaction(tx.id);
+        }
+        
+        for (const tx of toUpdate) {
+          await updateTransaction(tx.id, {
+            price: tx.price,
+            quantity: tx.quantity,
+            date: tx.date
+          });
+        }
+
+        // Reload data
+        await refreshData();
         return { error: null };
       }
 
-      // Update portfolio fields
+      // If updating dividends, handle by diffing and syncing
+      if (updates.dividends) {
+        const existingAsset = portfolio.find(p => p.id === id);
+        if (!existingAsset) {
+          throw new Error('Asset not found');
+        }
+
+        const existingDivIds = new Set((existingAsset.dividends || []).map(d => d.id));
+        const newDivIds = new Set((updates.dividends || []).map(d => d.id));
+
+        // Find dividends to add
+        const toAdd = updates.dividends.filter(d => !existingDivIds.has(d.id));
+        
+        // Find dividends to delete
+        const toDelete = (existingAsset.dividends || []).filter(d => !newDivIds.has(d.id));
+
+        // Execute operations
+        for (const div of toAdd) {
+          await createDividend(id, div);
+        }
+        
+        for (const div of toDelete) {
+          await deleteDividend(div.id);
+        }
+
+        // Reload data
+        await refreshData();
+        return { error: null };
+      }
+
+      // Update portfolio fields only
       const { error } = await updatePortfolio(id, {
         name: updates.name,
         sector: updates.sector
@@ -158,7 +252,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error updating asset:', err);
@@ -175,7 +269,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error deleting asset:', err);
@@ -211,7 +305,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error deleting account:', err);
@@ -228,7 +322,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error adding transaction:', err);
@@ -245,7 +339,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error updating transaction:', err);
@@ -262,7 +356,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error deleting transaction:', err);
@@ -279,7 +373,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error adding dividend:', err);
@@ -296,7 +390,7 @@ export const useSupabasePortfolio = () => {
       if (error) throw error;
 
       // Reload data
-      await loadData();
+      await refreshData();
       return { error: null };
     } catch (err) {
       console.error('Error deleting dividend:', err);
@@ -411,7 +505,7 @@ export const useSupabasePortfolio = () => {
       }
 
       // 3. Reload all data
-      await loadData();
+      await refreshData();
 
       // Log import stats
       console.log('📊 Import Stats:', stats);
@@ -425,10 +519,13 @@ export const useSupabasePortfolio = () => {
     }
   };
 
+  // Memoize account names to prevent unnecessary re-renders
+  const accountNames = useMemo(() => accounts.map(a => a.name), [accounts]);
+
   return {
     portfolio,
     setPortfolio,
-    accounts: accounts.map(a => a.name), // Convert to array of names for compatibility
+    accounts: accountNames, // Memoized array of account names
     accountsData: accounts, // Full account objects with IDs
     setAccounts,
     marketPrices,
@@ -449,7 +546,7 @@ export const useSupabasePortfolio = () => {
     deleteTransaction: deleteTransactionById,
     addDividend,
     deleteDividend: deleteDividendById,
-    refreshData: loadData,
+    refreshData, // Silent refresh without loading spinner
     bulkImportPortfolio // For import functionality
   };
 };

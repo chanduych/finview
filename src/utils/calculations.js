@@ -26,6 +26,57 @@ if (typeof xirr !== 'function') {
 }
 
 /**
+ * Calculate simple annualized return as a fallback when XIRR fails
+ * ONLY used for single-transaction cases where the calculation is accurate
+ * 
+ * @param {Array} transactions - Cash flow transactions (investments are negative)
+ * @param {number} currentValue - Current portfolio value
+ * @param {number} investmentCount - Number of investment transactions (excluding current value)
+ * @returns {number|null} Annualized return percentage, or null if not suitable for simple calc
+ */
+const calculateSimpleAnnualizedReturn = (transactions, currentValue, investmentCount) => {
+    try {
+        // Only use simple calculation for single transaction cases
+        // For multiple transactions, XIRR is the only accurate method
+        if (investmentCount > 1) {
+            return null; // Don't provide inaccurate fallback
+        }
+        
+        // Get total invested (sum of all negative amounts)
+        const totalInvested = transactions
+            .filter(t => t.amount < 0)
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        if (totalInvested <= 0) return null;
+        
+        // Get earliest transaction date
+        const sortedTx = [...transactions].sort((a, b) => a.when - b.when);
+        const firstDate = sortedTx[0].when;
+        const today = new Date();
+        
+        // Calculate days held
+        const daysHeld = Math.max(1, (today - firstDate) / (1000 * 60 * 60 * 24));
+        
+        // Simple return
+        const simpleReturn = (currentValue - totalInvested) / totalInvested;
+        
+        // For very short periods (< 30 days), don't annualize - it creates misleading numbers
+        if (daysHeld < 30) {
+            return null; // Too short to provide meaningful annualized return
+        }
+        
+        // For longer periods, use proper annualization
+        const yearsHeld = daysHeld / 365;
+        const annualizedReturn = (Math.pow(1 + simpleReturn, 1 / yearsHeld) - 1) * 100;
+        
+        // Cap extreme values
+        return Math.max(-100, Math.min(1000, annualizedReturn));
+    } catch (e) {
+        return null;
+    }
+};
+
+/**
  * Calculates the Extended Internal Rate of Return (XIRR) for an asset
  * XIRR is the annualized rate of return for investments with irregular cash flows
  *
@@ -43,7 +94,6 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
     try {
         // Need at least one transaction
         if (!asset.transactions || asset.transactions.length === 0) {
-            console.log('XIRR: No transactions for', asset.symbol);
             return null;
         }
 
@@ -65,7 +115,6 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
             });
 
         if (transactions.length === 0) {
-            console.log('XIRR: No valid transactions after filtering for', asset.symbol);
             return null;
         }
 
@@ -86,13 +135,11 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
                 when: new Date()
             });
         } else {
-            console.log('XIRR: Current value is 0 or invalid for', asset.symbol, 'currentValue:', currentValue, 'totalQty:', asset.totalQty);
             return null;
         }
 
         // Need at least 2 cash flows for XIRR (one investment + one redemption)
         if (transactions.length < 2) {
-            console.log('XIRR: Not enough transactions for', asset.symbol, 'count:', transactions.length);
             return null;
         }
 
@@ -101,23 +148,11 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
         const hasInflow = transactions.some(t => t.amount > 0);
 
         if (!hasOutflow || !hasInflow) {
-            console.log('XIRR: Missing outflow or inflow for', asset.symbol, 'hasOutflow:', hasOutflow, 'hasInflow:', hasInflow);
             return null;
         }
 
         // Sort transactions by date (required by xirr library)
         transactions.sort((a, b) => a.when - b.when);
-
-        // Debug: Log transaction details
-        console.log('XIRR Calculation for', asset.symbol, ':', {
-            transactionCount: transactions.length,
-            transactions: transactions.map(t => ({
-                amount: t.amount,
-                date: t.when.toISOString().split('T')[0]
-            })),
-            currentValue: currentValue,
-            totalQty: asset.totalQty
-        });
 
         // Verify transaction format for xirr library
         // xirr expects: [{ amount: number, when: Date }, ...]
@@ -126,51 +161,64 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
             when: t.when instanceof Date ? t.when : new Date(t.when)
         }));
 
-        // Calculate XIRR
+        // Calculate XIRR with multiple attempts
         let result;
-        try {
-            // The xirr library returns a decimal (e.g., 0.05 for 5%)
-            result = xirr(xirrTransactions);
-            console.log('XIRR raw result for', asset.symbol, ':', result, 'type:', typeof result);
-        } catch (xirrError) {
-            console.error('XIRR library error for', asset.symbol, ':', xirrError);
-            console.error('Transaction data:', JSON.stringify(xirrTransactions.map(t => ({
-                amount: t.amount,
-                when: t.when.toISOString()
-            })), null, 2));
-
-            // Check if we have valid cash flows
-            const totalOutflow = transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-            const totalInflow = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
-
-            console.log('Cash flow summary:', {
-                totalOutflow,
-                totalInflow,
-                netFlow: totalInflow - totalOutflow,
-                transactionCount: transactions.length
-            });
-
-            if (totalInflow <= totalOutflow) {
-                console.log('XIRR: Total inflow must be greater than total outflow for positive return');
+        let xirrSucceeded = false;
+        
+        // Try different initial guesses to help convergence
+        const initialGuesses = [0.1, 0.0, 0.5, -0.5, 1.0, -0.9];
+        
+        for (const guess of initialGuesses) {
+            try {
+                // The xirr library returns a decimal (e.g., 0.05 for 5%)
+                result = xirr(xirrTransactions, { guess });
+                xirrSucceeded = true;
+                break; // Success, exit loop
+            } catch (xirrError) {
+                // Try next guess
+                continue;
             }
-            return null;
+        }
+        
+        // If all guesses failed, try without options
+        if (!xirrSucceeded) {
+            try {
+                result = xirr(xirrTransactions);
+                xirrSucceeded = true;
+            } catch (xirrError) {
+                // XIRR failed - only use fallback for single-transaction assets
+                const investmentCount = transactions.filter(t => t.amount < 0).length;
+                const totalInflow = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+                const fallbackReturn = calculateSimpleAnnualizedReturn(transactions, totalInflow, investmentCount);
+                
+                if (fallbackReturn !== null) {
+                    // Silently use fallback for single-transaction case
+                    return fallbackReturn;
+                }
+                
+                // For multi-transaction cases, return null - XIRR is the only accurate method
+                return null;
+            }
         }
 
         // Check if result is valid (not NaN or Infinity)
         if (result === null || result === undefined || isNaN(result) || !isFinite(result)) {
-            console.log('XIRR: Invalid result for', asset.symbol, 'result:', result, 'type:', typeof result);
-            return null;
+            // Try fallback only for single-transaction cases
+            const investmentCount = transactions.filter(t => t.amount < 0).length;
+            const totalInflow = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+            return calculateSimpleAnnualizedReturn(transactions, totalInflow, investmentCount);
         }
 
         // xirr returns a decimal (0.05 = 5%), convert to percentage
         const xirrPercent = result * 100;
-        console.log('XIRR calculated successfully for', asset.symbol, ':', xirrPercent.toFixed(2) + '%');
+        
+        // Cap extreme values to prevent display issues
+        if (xirrPercent > 1000) return 1000;
+        if (xirrPercent < -100) return -100;
+        
         return xirrPercent;
     } catch (e) {
-        console.error('XIRR calculation error for', asset.symbol, ':', e);
-        if (e.message) {
-            console.error('Error message:', e.message);
-        }
+        // Silent fail with null - don't spam console
         return null;
     }
 };

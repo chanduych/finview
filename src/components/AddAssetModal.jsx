@@ -1,35 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     X,
     Plus,
     RefreshCw,
-    SearchIcon,
+    Search,
     Loader2,
     Building2,
-    Activity
+    TrendingUp,
+    ChevronDown,
+    Check,
+    Wallet,
+    Calendar,
+    Hash,
+    IndianRupee,
+    Layers,
+    BarChart3,
+    PieChart
 } from 'lucide-react';
 import { useSearch } from '../hooks/useSearch';
 import { verifySymbol, handleSelectResult as handleSelectResultService } from '../services/marketDataService';
-import { ASSET_TYPES } from '../constants/assetTypes';
+
+// Handle mobile keyboard - scroll focused input into view
+const handleInputFocus = (e) => {
+    setTimeout(() => {
+        e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+};
+
+// Asset type config with icons and colors
+const ASSET_TYPE_CONFIG = {
+    STOCK: { 
+        icon: BarChart3, 
+        label: 'Stock', 
+        color: 'teal',
+        bgClass: 'bg-teal-500',
+        lightBgClass: 'bg-teal-50',
+        textClass: 'text-teal-600',
+        borderClass: 'border-teal-500'
+    },
+    MF: { 
+        icon: PieChart, 
+        label: 'Mutual Fund', 
+        color: 'violet',
+        bgClass: 'bg-violet-500',
+        lightBgClass: 'bg-violet-50',
+        textClass: 'text-violet-600',
+        borderClass: 'border-violet-500'
+    },
+    ETF: { 
+        icon: Layers, 
+        label: 'ETF', 
+        color: 'amber',
+        bgClass: 'bg-amber-500',
+        lightBgClass: 'bg-amber-50',
+        textClass: 'text-amber-600',
+        borderClass: 'border-amber-500'
+    }
+};
 
 /**
- * AddAssetModal Component
- *
- * Modal for adding new investments to the portfolio.
- * Features:
- * - Asset type selection (STOCK, MF, ETF)
- * - Live search with dropdown results
- * - Symbol verification with price preview
- * - Form fields for quantity, buy price, date, and sector
- * - Mobile-responsive design with proper touch targets
- *
- * @param {Object} props - Component props
- * @param {boolean} props.isOpen - Whether the modal is open
- * @param {Function} props.onClose - Callback to close the modal
- * @param {Function} props.onAdd - Callback when user adds an asset (receives asset data)
- * @param {Array<string>} props.accounts - List of available accounts/wallets
- * @param {string} props.selectedAccount - Currently selected account
- * @param {Function} props.setSelectedAccount - Setter for selectedAccount
+ * AddAssetModal Component - Mobile-first bottom sheet design
  */
 const AddAssetModal = ({
     isOpen,
@@ -46,10 +76,12 @@ const AddAssetModal = ({
     const [quantity, setQuantity] = useState('');
     const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0]);
     const [sector, setSector] = useState('');
-    const [addStatus, setAddStatus] = useState('idle'); // 'idle', 'loading', 'success'
+    const [addStatus, setAddStatus] = useState('idle');
     const [verifyLoading, setVerifyLoading] = useState(false);
     const [previewPrice, setPreviewPrice] = useState(null);
-    const [isSelecting, setIsSelecting] = useState(false); // Flag to prevent search during selection
+    const [isSelecting, setIsSelecting] = useState(false);
+    const [showAccountPicker, setShowAccountPicker] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
 
     // Search hook
     const {
@@ -60,7 +92,19 @@ const AddAssetModal = ({
         isSearching
     } = useSearch(selectedAssetType, isSelecting);
 
+    // Lock body scroll when modal is open
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
+
     if (!isOpen) return null;
+
+    const assetConfig = ASSET_TYPE_CONFIG[selectedAssetType];
 
     // Handle symbol verification
     const handleVerifySymbol = async (customSymbol = null) => {
@@ -71,23 +115,17 @@ const AddAssetModal = ({
         let type = selectedAssetType;
         if (type === 'STOCK' && /^\d+$/.test(symbol)) type = 'MF';
 
-        console.log(`🔍 Verifying symbol: ${symbol}, type: ${type}`);
-
         try {
             const data = await verifySymbol(symbol, type);
-            console.log(`✅ Verification result for ${symbol}:`, data);
-
             if (data) {
                 setPreviewPrice(data.price);
                 setBuyPrice(data.price.toString());
                 if (data.name) setSelectedAssetName(data.name);
-                console.log(`✅ Buy price set to: ${data.price}`);
             } else {
-                console.log(`❌ Verification failed for ${symbol}`);
                 setPreviewPrice('Invalid');
             }
         } catch (error) {
-            console.error('❌ Verify symbol error:', error);
+            console.error('Verify symbol error:', error);
             setPreviewPrice('Invalid');
         } finally {
             setVerifyLoading(false);
@@ -96,29 +134,18 @@ const AddAssetModal = ({
 
     // Handle search result selection
     const handleSelectResult = async (result) => {
-        // Clear search results IMMEDIATELY before anything else
         setSearchResults([]);
-
         try {
-            // Set flag to prevent search from re-triggering
             setIsSelecting(true);
-
             const resultData = await handleSelectResultService(result);
-
-            // Batch all updates together
             setSearchQuery(resultData.symbol);
             setSelectedAssetName(resultData.name);
             setSelectedAssetType(resultData.type);
-
             if (resultData.data) {
                 setPreviewPrice(resultData.data.price);
                 setBuyPrice(resultData.data.price.toString());
             }
-
-            // Keep blocking for 1 second to ensure no search triggers
-            setTimeout(() => {
-                setIsSelecting(false);
-            }, 1000);
+            setTimeout(() => setIsSelecting(false), 1000);
         } catch (error) {
             console.error('Select result error:', error);
             setSearchResults([]);
@@ -129,6 +156,14 @@ const AddAssetModal = ({
     // Handle add asset
     const handleAddAsset = () => {
         if (!searchQuery || !buyPrice || !quantity) return;
+        
+        const txDate = new Date(buyDate);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (txDate > today) {
+            alert('Transaction date cannot be in the future');
+            return;
+        }
 
         setAddStatus('loading');
 
@@ -150,17 +185,15 @@ const AddAssetModal = ({
             }
         };
 
-        // Call parent's onAdd callback
         onAdd(assetData);
-
         setAddStatus('success');
         setTimeout(() => {
             resetForm();
-            onClose();
-        }, 500);
+            handleClose();
+        }, 600);
     };
 
-    // Reset form to initial state
+    // Reset form
     const resetForm = () => {
         setAddStatus('idle');
         setSearchQuery('');
@@ -173,85 +206,123 @@ const AddAssetModal = ({
         setSearchResults([]);
     };
 
-    // Handle modal close
+    // Handle close with animation
     const handleClose = () => {
-        resetForm();
-        onClose();
+        setIsClosing(true);
+        setTimeout(() => {
+            setIsClosing(false);
+            resetForm();
+            onClose();
+        }, 200);
     };
 
+    const isFormValid = searchQuery && buyPrice && quantity;
+
     return (
-        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-            <div className="bg-white w-full max-w-full sm:max-w-md rounded-t-2xl md:rounded-[3.5rem] shadow-2xl overflow-hidden max-h-[92vh] md:max-h-[90vh] flex flex-col">
+        <div 
+            className={`fixed inset-0 z-[100] flex items-end justify-center transition-all duration-200 ${
+                isClosing ? 'bg-black/0' : 'bg-black/60'
+            }`}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) handleClose();
+            }}
+        >
+            {/* Bottom Sheet */}
+            <div 
+                className={`w-full bg-white dark:bg-slate-900 rounded-t-[28px] shadow-2xl flex flex-col transition-transform duration-200 ${
+                    isClosing ? 'translate-y-full' : 'translate-y-0'
+                }`}
+                style={{ maxHeight: '95dvh', height: 'auto' }}
+            >
+                {/* Drag Handle */}
+                <div className="flex justify-center pt-3 pb-2">
+                    <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                </div>
+
                 {/* Header */}
-                <div className="p-3 md:p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
-                    <h2 className="text-lg md:text-2xl font-black text-slate-800 tracking-tight leading-none">
-                        Add Investment
-                    </h2>
+                <div className="px-5 pb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl ${assetConfig.bgClass} flex items-center justify-center`}>
+                            <Plus size={22} className="text-white" strokeWidth={3} />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-black text-slate-800 dark:text-white">
+                                Add Investment
+                            </h2>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                {assetConfig.label}
+                            </p>
+                        </div>
+                    </div>
                     <button
                         onClick={handleClose}
-                        className="p-2 hover:bg-slate-200 rounded-full transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
-                        aria-label="Close modal"
+                        className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform"
                     >
-                        <X size={24} />
+                        <X size={20} className="text-slate-500" />
                     </button>
                 </div>
 
-                {/* Content - Scrollable */}
-                <div className="p-3 md:p-8 space-y-4 md:space-y-6 overflow-y-auto flex-1">
-                    {/* Account Selection */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
-                            Account Wallet
-                        </label>
-                        <select
-                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
-                            value={selectedAccount}
-                            onChange={e => setSelectedAccount(e.target.value)}
-                        >
-                            {accounts.map(acc => (
-                                <option key={acc} value={acc}>{acc}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Asset Type Selection */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 overscroll-contain">
+                    
+                    {/* Asset Type Pills */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide">
                             Asset Type
                         </label>
-                        <select
-                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl font-bold outline-none border border-slate-200 focus:border-indigo-300 appearance-none text-slate-700 text-sm md:text-base min-h-[44px]"
-                            value={selectedAssetType}
-                            onChange={e => {
-                                setSelectedAssetType(e.target.value);
-                                setSearchQuery('');
-                                setSearchResults([]);
-                                setSelectedAssetName('');
-                                setPreviewPrice(null);
-                            }}
+                        <div className="flex gap-2">
+                            {Object.entries(ASSET_TYPE_CONFIG).map(([type, config]) => {
+                                const Icon = config.icon;
+                                const isActive = selectedAssetType === type;
+                                return (
+                                    <button
+                                        key={type}
+                                        onClick={() => {
+                                            setSelectedAssetType(type);
+                                            setSearchQuery('');
+                                            setSearchResults([]);
+                                            setSelectedAssetName('');
+                                            setPreviewPrice(null);
+                                        }}
+                                        className={`flex-1 py-3 px-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                                            isActive 
+                                                ? `${config.bgClass} text-white shadow-lg` 
+                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        <Icon size={16} strokeWidth={2.5} />
+                                        <span className="text-xs font-black">{config.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Account Selector */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                            <Wallet size={12} /> Account
+                        </label>
+                        <button
+                            onClick={() => setShowAccountPicker(true)}
+                            className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-between border border-slate-200 dark:border-slate-700 active:bg-slate-100"
                         >
-                            <option value="STOCK">Stock</option>
-                            <option value="MF">Mutual Fund</option>
-                            <option value="ETF">ETF</option>
-                        </select>
+                            <span className="font-bold text-slate-700 dark:text-slate-200">{selectedAccount}</span>
+                            <ChevronDown size={18} className="text-slate-400" />
+                        </button>
                     </div>
 
                     {/* Symbol Search */}
-                    <div className="space-y-1 relative">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
-                            Symbol / Asset Search
+                    <div className="space-y-2 relative">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                            <Search size={12} /> Search {assetConfig.label}
                         </label>
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <input
                                     type="text"
-                                    placeholder={
-                                        selectedAssetType === 'STOCK' ? 'Search stocks...' :
-                                        selectedAssetType === 'ETF' ? 'Search ETFs...' :
-                                        selectedAssetType === 'MF' ? 'Search MFs...' :
-                                        'Search asset...'
-                                    }
-                                    className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold uppercase pr-10 text-sm md:text-base min-h-[44px]"
+                                    placeholder={`Search ${assetConfig.label.toLowerCase()}s...`}
+                                    className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent uppercase text-sm"
                                     value={searchQuery}
                                     onChange={e => {
                                         const value = e.target.value;
@@ -261,36 +332,31 @@ const AddAssetModal = ({
                                             setSearchResults([]);
                                         }
                                     }}
+                                    onFocus={handleInputFocus}
                                 />
                                 {isSearching && (
-                                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-400" size={16} />
-                                )}
-                                {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" title="No results found">
-                                        <SearchIcon size={16} />
-                                    </div>
+                                    <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-teal-500" size={18} />
                                 )}
                             </div>
                             <button
                                 onClick={() => handleVerifySymbol()}
                                 disabled={verifyLoading || !searchQuery}
-                                className="px-3 md:px-4 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl md:rounded-2xl hover:bg-indigo-100 transition-all disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation shrink-0"
-                                aria-label="Verify symbol"
+                                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 ${assetConfig.lightBgClass} ${assetConfig.textClass} border ${assetConfig.borderClass}`}
                             >
                                 {verifyLoading ? (
-                                    <Loader2 className="animate-spin" size={18} />
+                                    <Loader2 className="animate-spin" size={20} />
                                 ) : (
-                                    <SearchIcon size={18} />
+                                    <Search size={20} />
                                 )}
                             </button>
                         </div>
 
-                        {/* Search Results Dropdown */}
+                        {/* Search Results */}
                         {searchResults.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-indigo-200 rounded-xl md:rounded-2xl shadow-2xl z-[200] overflow-hidden max-h-64 overflow-y-auto">
-                                <div className="p-2 bg-indigo-50 border-b border-indigo-100">
-                                    <p className="text-[9px] font-black text-indigo-600 uppercase">
-                                        {searchResults.length} result{searchResults.length > 1 ? 's' : ''} found
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-[200] overflow-hidden max-h-60 overflow-y-auto">
+                                <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase">
+                                        {searchResults.length} results
                                     </p>
                                 </div>
                                 {searchResults.map((result, idx) => (
@@ -301,23 +367,21 @@ const AddAssetModal = ({
                                             e.stopPropagation();
                                             handleSelectResult(result);
                                         }}
-                                        className="w-full px-4 md:px-5 py-3 text-left hover:bg-indigo-50 active:bg-indigo-100 flex items-center gap-3 border-b border-slate-100 last:border-0 transition-colors cursor-pointer min-h-[52px] touch-manipulation"
+                                        className="w-full px-4 py-3 text-left flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 last:border-0 active:bg-slate-50 dark:active:bg-slate-700"
                                     >
-                                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                                             result.searchType === 'MF'
-                                                ? 'bg-emerald-100 text-emerald-600'
-                                                : 'bg-indigo-100 text-indigo-600'
+                                                ? 'bg-violet-100 text-violet-600'
+                                                : 'bg-teal-100 text-teal-600'
                                         }`}>
-                                            {result.searchType === 'MF' ? <Building2 size={18} /> : <Activity size={18} />}
+                                            {result.searchType === 'MF' ? <Building2 size={18} /> : <TrendingUp size={18} />}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-xs md:text-sm font-black text-slate-800 truncate leading-tight">
+                                            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">
                                                 {result.schemeName || result.name || 'Unknown'}
                                             </p>
-                                            <p className="text-[9px] md:text-[10px] text-slate-500 font-bold tracking-widest mt-0.5 uppercase">
-                                                {result.searchType === 'MF'
-                                                    ? `Code: ${result.schemeCode}`
-                                                    : `Symbol: ${result.symbol}`}
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase">
+                                                {result.searchType === 'MF' ? `Code: ${result.schemeCode}` : result.symbol}
                                             </p>
                                         </div>
                                     </button>
@@ -325,124 +389,180 @@ const AddAssetModal = ({
                             </div>
                         )}
 
-                        {/* No Results Message */}
-                        {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && !selectedAssetName && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl md:rounded-2xl shadow-lg z-[200] p-4">
-                                <p className="text-xs text-slate-400 text-center">
-                                    No results found. Try a different search term.
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Selected Asset Display */}
+                        {/* Selected Asset */}
                         {selectedAssetName && (
-                            <div className="mt-2 bg-indigo-50 border border-indigo-100 p-2 rounded-xl">
-                                <p className="text-[10px] font-black text-indigo-600 uppercase leading-tight">
-                                    Selected: {selectedAssetName}
-                                </p>
+                            <div className={`mt-2 p-3 rounded-xl ${assetConfig.lightBgClass} border ${assetConfig.borderClass}/30`}>
+                                <div className="flex items-center gap-2">
+                                    <Check size={14} className={assetConfig.textClass} />
+                                    <p className={`text-xs font-bold ${assetConfig.textClass} truncate`}>
+                                        {selectedAssetName}
+                                    </p>
+                                </div>
                             </div>
                         )}
 
-                        {/* Preview Price Display */}
+                        {/* Price Preview */}
                         {previewPrice && (
-                            <p className={`text-[10px] mt-2 font-black uppercase px-2 py-1 rounded-md w-fit ${
+                            <div className={`flex items-center gap-2 mt-2 px-3 py-2 rounded-lg w-fit ${
                                 previewPrice === 'Invalid'
                                     ? 'bg-rose-100 text-rose-600'
                                     : 'bg-emerald-100 text-emerald-600'
                             }`}>
-                                {previewPrice === 'Invalid'
-                                    ? 'Ticker Not Found'
-                                    : `Current Price/NAV: ₹${previewPrice}`}
-                            </p>
+                                <IndianRupee size={12} />
+                                <span className="text-xs font-black">
+                                    {previewPrice === 'Invalid' ? 'Not Found' : `₹${previewPrice}`}
+                                </span>
+                            </div>
                         )}
                     </div>
 
-                    {/* Quantity and Buy Price */}
-                    <div className="grid grid-cols-2 gap-3 md:gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
-                                Quantity
+                    {/* Quantity & Price Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                                <Hash size={12} /> Quantity
                             </label>
                             <input
                                 type="number"
+                                inputMode="decimal"
                                 placeholder="0"
-                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base"
                                 value={quantity}
                                 onChange={e => setQuantity(e.target.value)}
+                                onFocus={handleInputFocus}
                             />
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
-                                Buy Price (₹)
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                                <IndianRupee size={12} /> Buy Price
                             </label>
                             <input
                                 type="number"
-                                placeholder="0"
-                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base"
                                 value={buyPrice}
                                 onChange={e => setBuyPrice(e.target.value)}
+                                onFocus={handleInputFocus}
                             />
                         </div>
                     </div>
 
-                    {/* Buy Date */}
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
-                            Date
+                    {/* Date */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                            <Calendar size={12} /> Purchase Date
                         </label>
                         <input
                             type="date"
-                            className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                            max={new Date().toISOString().split('T')[0]}
+                            className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
                             value={buyDate}
                             onChange={e => setBuyDate(e.target.value)}
+                            onFocus={handleInputFocus}
                         />
                     </div>
 
-                    {/* Sector (Only for Stocks) */}
+                    {/* Sector (Stocks only) */}
                     {selectedAssetType === 'STOCK' && (
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide">
                                 Sector (Optional)
                             </label>
                             <input
                                 type="text"
-                                placeholder="e.g. IT, Banking..."
-                                className="w-full px-3 md:px-5 py-2.5 md:py-4 bg-slate-50 rounded-xl md:rounded-2xl outline-none border border-slate-200 focus:border-indigo-300 font-bold text-sm md:text-base min-h-[44px]"
+                                placeholder="e.g. IT, Banking, Pharma..."
+                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                                 value={sector}
                                 onChange={e => setSector(e.target.value)}
+                                onFocus={handleInputFocus}
                             />
+                        </div>
+                    )}
+
+                    {/* Investment Summary */}
+                    {quantity && buyPrice && (
+                        <div className="p-4 bg-gradient-to-r from-teal-500 to-teal-600 rounded-2xl text-white">
+                            <p className="text-[10px] font-bold uppercase opacity-80 mb-1">Total Investment</p>
+                            <p className="text-2xl font-black tabular-nums">
+                                ₹{(parseFloat(quantity || 0) * parseFloat(buyPrice || 0)).toLocaleString('en-IN', { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                })}
+                            </p>
                         </div>
                     )}
 
                     {/* Add Button */}
                     <button
                         onClick={handleAddAsset}
-                        disabled={addStatus === 'loading' || !searchQuery || !buyPrice || !quantity}
-                        className={`w-full py-3.5 md:py-5 rounded-xl md:rounded-[2rem] font-black text-white shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2 min-h-[52px] touch-manipulation ${
+                        disabled={addStatus === 'loading' || !isFormValid}
+                        className={`w-full py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
                             addStatus === 'success'
-                                ? 'bg-emerald-500'
-                                : 'bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                                ? 'bg-emerald-500 shadow-emerald-200'
+                                : isFormValid
+                                    ? 'bg-gradient-to-r from-teal-500 to-teal-600 shadow-teal-200'
+                                    : 'bg-slate-300 dark:bg-slate-700 shadow-none'
                         }`}
                     >
                         {addStatus === 'loading' ? (
                             <>
                                 <RefreshCw className="animate-spin" size={20} />
-                                <span className="text-sm md:text-base">Adding...</span>
+                                <span>Adding...</span>
                             </>
                         ) : addStatus === 'success' ? (
                             <>
-                                <Plus size={20} />
-                                <span className="text-sm md:text-base">Added Successfully</span>
+                                <Check size={20} strokeWidth={3} />
+                                <span>Added!</span>
                             </>
                         ) : (
                             <>
-                                <Plus size={20} />
-                                <span className="text-sm md:text-base">Add to Portfolio</span>
+                                <Plus size={20} strokeWidth={3} />
+                                <span>Add to Portfolio</span>
                             </>
                         )}
                     </button>
                 </div>
             </div>
+
+            {/* Account Picker Bottom Sheet */}
+            {showAccountPicker && (
+                <div 
+                    className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40"
+                    onClick={() => setShowAccountPicker(false)}
+                >
+                    <div 
+                        className="w-full bg-white dark:bg-slate-900 rounded-t-[28px] shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex justify-center pt-3 pb-2">
+                            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                        </div>
+                        <div className="px-5 pb-2">
+                            <h3 className="text-base font-black text-slate-800 dark:text-white">Select Account</h3>
+                        </div>
+                        <div className="px-3 pb-6 max-h-60 overflow-y-auto">
+                            {accounts.map(acc => (
+                                <button
+                                    key={acc}
+                                    onClick={() => {
+                                        setSelectedAccount(acc);
+                                        setShowAccountPicker(false);
+                                    }}
+                                    className={`w-full px-4 py-3.5 rounded-xl flex items-center justify-between mb-1 transition-all ${
+                                        selectedAccount === acc 
+                                            ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600' 
+                                            : 'text-slate-700 dark:text-slate-300 active:bg-slate-50'
+                                    }`}
+                                >
+                                    <span className="font-bold">{acc}</span>
+                                    {selectedAccount === acc && <Check size={18} className="text-teal-500" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

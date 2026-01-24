@@ -20,6 +20,9 @@ import { formatCurrency } from '../utils/formatters';
  * @param {Array} props.stats.walletAllocation - Wallet allocation data [{ name, value }]
  */
 const ChartSection = ({ stats }) => {
+    // Detect mobile
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    
     // Custom tooltip formatter for pie charts
     const tooltipFormatter = (value, name, props, data) => {
         const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -39,97 +42,214 @@ const ChartSection = ({ stats }) => {
 
     // Common tooltip style
     const tooltipStyle = {
-        borderRadius: '16px',
+        borderRadius: '12px',
         border: 'none',
         boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-        fontSize: '12px'
+        fontSize: isMobile ? '10px' : '12px',
+        padding: isMobile ? '6px 10px' : '8px 12px'
     };
 
     // Responsive legend style
     const legendWrapperStyle = {
-        fontSize: '10px',
+        fontSize: isMobile ? '9px' : '10px',
         fontWeight: 'bold',
-        textTransform: 'uppercase'
+        textTransform: 'uppercase',
+        paddingTop: isMobile ? '8px' : '16px'
+    };
+
+    // Custom legend with bars for mobile
+    const renderMobileLegend = (data, colorOffset = 0) => {
+        const total = data.reduce((sum, item) => sum + item.value, 0);
+        return (
+            <div className="space-y-2 mt-3">
+                {data.map((item, index) => {
+                    const percent = total > 0 ? (item.value / total) * 100 : 0;
+                    return (
+                        <div key={item.name} className="flex items-center gap-2">
+                            <div 
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: COLORS[(index + colorOffset) % COLORS.length] }}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold text-slate-600 truncate">
+                                        {item.name}
+                                    </span>
+                                    <span className="text-[10px] font-black text-slate-800 flex-shrink-0">
+                                        {percent.toFixed(1)}%
+                                    </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                                    <div 
+                                        className="h-full rounded-full transition-all duration-500"
+                                        style={{ 
+                                            width: `${percent}%`,
+                                            backgroundColor: COLORS[(index + colorOffset) % COLORS.length]
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
     };
 
     return (
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             {/* Asset Allocation Chart */}
-            <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm h-[280px] md:h-[320px]">
-                <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-4 md:mb-6">
+            <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-6">
                     Asset Allocation
                 </h3>
-                <ResponsiveContainer width="100%" height="90%">
-                    <PieChart>
-                        <Pie
-                            data={stats.typeAllocation}
-                            innerRadius="50%"
-                            outerRadius="70%"
-                            paddingAngle={5}
-                            dataKey="value"
-                        >
-                            {stats.typeAllocation.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={COLORS[index % COLORS.length]}
-                                    stroke="none"
+                
+                {isMobile ? (
+                    /* Mobile: Compact chart + bar legend */
+                    <div>
+                        <div className="h-[140px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={stats.typeAllocation}
+                                        innerRadius="55%"
+                                        outerRadius="85%"
+                                        paddingAngle={3}
+                                        dataKey="value"
+                                    >
+                                        {stats.typeAllocation.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={COLORS[index % COLORS.length]}
+                                                stroke="none"
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        formatter={(val, name, props) =>
+                                            tooltipFormatter(val, name, props, stats.typeAllocation)
+                                        }
+                                        contentStyle={tooltipStyle}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {renderMobileLegend(stats.typeAllocation, 0)}
+                    </div>
+                ) : (
+                    /* Desktop: Full chart with legend */
+                    <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={stats.typeAllocation}
+                                    innerRadius="50%"
+                                    outerRadius="70%"
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {stats.typeAllocation.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={COLORS[index % COLORS.length]}
+                                            stroke="none"
+                                        />
+                                    ))}
+                                </Pie>
+                                <Tooltip
+                                    formatter={(val, name, props) =>
+                                        tooltipFormatter(val, name, props, stats.typeAllocation)
+                                    }
+                                    contentStyle={tooltipStyle}
                                 />
-                            ))}
-                        </Pie>
-                        <Tooltip
-                            formatter={(val, name, props) =>
-                                tooltipFormatter(val, name, props, stats.typeAllocation)
-                            }
-                            contentStyle={tooltipStyle}
-                        />
-                        <Legend
-                            iconType="circle"
-                            wrapperStyle={legendWrapperStyle}
-                            formatter={(value, entry) =>
-                                legendFormatter(value, entry, stats.typeAllocation)
-                            }
-                        />
-                    </PieChart>
-                </ResponsiveContainer>
+                                <Legend
+                                    iconType="circle"
+                                    wrapperStyle={legendWrapperStyle}
+                                    formatter={(value, entry) =>
+                                        legendFormatter(value, entry, stats.typeAllocation)
+                                    }
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
             </div>
 
             {/* Wallet Distribution Chart */}
-            <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm h-[280px] md:h-[320px]">
-                <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-4 md:mb-6">
+            <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-6">
                     Wallet Distribution
                 </h3>
-                <ResponsiveContainer width="100%" height="90%">
-                    <PieChart>
-                        <Pie
-                            data={stats.walletAllocation}
-                            innerRadius="50%"
-                            outerRadius="70%"
-                            paddingAngle={5}
-                            dataKey="value"
-                        >
-                            {stats.walletAllocation.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={COLORS[(index + 2) % COLORS.length]}
-                                    stroke="none"
+                
+                {isMobile ? (
+                    /* Mobile: Compact chart + bar legend */
+                    <div>
+                        <div className="h-[140px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={stats.walletAllocation}
+                                        innerRadius="55%"
+                                        outerRadius="85%"
+                                        paddingAngle={3}
+                                        dataKey="value"
+                                    >
+                                        {stats.walletAllocation.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={COLORS[(index + 2) % COLORS.length]}
+                                                stroke="none"
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        formatter={(val, name, props) =>
+                                            tooltipFormatter(val, name, props, stats.walletAllocation)
+                                        }
+                                        contentStyle={tooltipStyle}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {renderMobileLegend(stats.walletAllocation, 2)}
+                    </div>
+                ) : (
+                    /* Desktop: Full chart with legend */
+                    <div className="h-[260px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={stats.walletAllocation}
+                                    innerRadius="50%"
+                                    outerRadius="70%"
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {stats.walletAllocation.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={COLORS[(index + 2) % COLORS.length]}
+                                            stroke="none"
+                                        />
+                                    ))}
+                                </Pie>
+                                <Tooltip
+                                    formatter={(val, name, props) =>
+                                        tooltipFormatter(val, name, props, stats.walletAllocation)
+                                    }
+                                    contentStyle={tooltipStyle}
                                 />
-                            ))}
-                        </Pie>
-                        <Tooltip
-                            formatter={(val, name, props) =>
-                                tooltipFormatter(val, name, props, stats.walletAllocation)
-                            }
-                            contentStyle={tooltipStyle}
-                        />
-                        <Legend
-                            iconType="circle"
-                            wrapperStyle={legendWrapperStyle}
-                            formatter={(value, entry) =>
-                                legendFormatter(value, entry, stats.walletAllocation)
-                            }
-                        />
-                    </PieChart>
-                </ResponsiveContainer>
+                                <Legend
+                                    iconType="circle"
+                                    wrapperStyle={legendWrapperStyle}
+                                    formatter={(value, entry) =>
+                                        legendFormatter(value, entry, stats.walletAllocation)
+                                    }
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
             </div>
         </section>
     );

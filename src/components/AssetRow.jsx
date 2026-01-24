@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
-    History, ChevronUp, MoreVertical, Trash2, Edit3, Save,
+    History, ChevronUp, MoreVertical, Trash2, Edit3,
     Plus, ShieldAlert
 } from 'lucide-react';
 import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters';
@@ -21,15 +21,8 @@ import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters'
  * @param {Object} props.item - Asset item data
  * @param {string|null} props.expandedAsset - ID of currently expanded asset
  * @param {Function} props.setExpandedAsset - Function to set expanded asset
- * @param {Object} props.marketPrices - Market prices lookup
- * @param {Function} props.setMarketPrices - Function to update market prices
- * @param {string|null} props.editingId - ID of asset being edited
- * @param {Function} props.setEditingId - Function to set editing ID
- * @param {string} props.editValue - Current edit value
- * @param {Function} props.setEditValue - Function to set edit value
  * @param {string|null} props.assetMenuOpen - ID of asset with open menu
  * @param {Function} props.setAssetMenuOpen - Function to set open menu
- * @param {Function} props.setAssetToDelete - Function to set asset for deletion
  * @param {Object|null} props.editingTransaction - Currently editing transaction
  * @param {Function} props.setEditingTransaction - Function to set editing transaction
  * @param {Array} props.portfolio - Full portfolio array
@@ -40,15 +33,14 @@ const AssetRow = ({
     pnlView = 'total',
     expandedAsset,
     setExpandedAsset,
-    marketPrices,
-    setMarketPrices,
-    editingId,
-    setEditingId,
-    editValue,
-    setEditValue,
     assetMenuOpen,
     setAssetMenuOpen,
     onDeleteAsset,
+    onAddTransaction,
+    onUpdateTransaction,
+    onDeleteTransaction,
+    onAddDividend,
+    onDeleteDividend,
     editingTransaction,
     setEditingTransaction,
     portfolio,
@@ -60,22 +52,6 @@ const AssetRow = ({
         setExpandedAsset(isExpanded ? null : item.id);
     };
 
-    const handleEditPrice = () => {
-        setEditingId(item.id);
-        setEditValue(item.currentPrice);
-    };
-
-    const handleSavePrice = () => {
-        setMarketPrices(prev => ({
-            ...prev,
-            [item.symbol]: {
-                price: parseFloat(editValue),
-                change: 0,
-                changePercent: 0
-            }
-        }));
-        setEditingId(null);
-    };
 
     const handleMenuToggle = (e) => {
         e.stopPropagation();
@@ -91,89 +67,164 @@ const AssetRow = ({
     };
 
     const handleAddTransaction = () => {
-        const newTx = {
-            id: Date.now(),
-            price: item.currentPrice,
+        // Create a pending new transaction - NOT added to portfolio yet
+        // Will be created when user clicks Save
+        const pendingTx = {
+            id: `pending-${Date.now()}`, // Mark as pending with special prefix
+            price: item.currentPrice || 0,
             quantity: 0,
-            date: new Date().toISOString().split('T')[0]
+            date: new Date().toISOString().split('T')[0],
+            isPending: true // Flag to indicate this is a new transaction
         };
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? { ...a, transactions: [...a.transactions, newTx] }
-                : a
-        ));
-        setEditingTransaction(newTx);
+        setEditingTransaction({ ...pendingTx });
     };
 
     const handleSaveTransaction = (tx) => {
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? {
-                    ...a,
-                    transactions: a.transactions.map(t =>
-                        t.id === tx.id ? editingTransaction : t
-                    )
-                }
-                : a
-        ));
+        if (!editingTransaction) return;
+        
+        const quantity = parseFloat(editingTransaction.quantity) || 0;
+        const price = parseFloat(editingTransaction.price) || 0;
+        
+        // Validate that we have meaningful data
+        if (quantity <= 0 || price <= 0) {
+            alert('Please enter valid quantity and price');
+            return;
+        }
+        
+        // Validate date is not in the future
+        const txDate = new Date(editingTransaction.date);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // End of today
+        if (txDate > today) {
+            alert('Transaction date cannot be in the future');
+            return;
+        }
+        
+        // Check if this is a NEW transaction (pending) or an EXISTING one being edited
+        if (editingTransaction.isPending) {
+            // This is a new transaction - CREATE it
+            const newTx = {
+                id: Date.now(), // Fresh ID for new transaction
+                date: editingTransaction.date,
+                quantity: quantity,
+                price: price
+            };
+            if (onAddTransaction) {
+                onAddTransaction(item.id, newTx);
+            }
+        } else {
+            // This is an existing transaction - UPDATE it
+            const updatedTx = {
+                id: tx.id,
+                date: editingTransaction.date,
+                quantity: quantity,
+                price: price
+            };
+            if (onUpdateTransaction) {
+                onUpdateTransaction(item.id, tx.id, updatedTx);
+            }
+        }
         setEditingTransaction(null);
     };
 
     const handleDeleteTransaction = (tx) => {
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? {
-                    ...a,
-                    transactions: a.transactions.filter(t => t.id !== tx.id)
-                }
-                : a
-        ));
+        // Can't delete a pending transaction - just cancel edit
+        if (editingTransaction?.isPending) {
+            setEditingTransaction(null);
+            return;
+        }
+        
+        // Show confirmation dialog
+        const confirmDelete = window.confirm(
+            `Are you sure you want to delete this transaction?\n\nDate: ${new Date(tx.date).toLocaleDateString('en-IN')}\nQuantity: ${tx.quantity}\nPrice: ₹${tx.price.toFixed(2)}`
+        );
+        
+        if (!confirmDelete) return;
+        
+        // Use callback prop for proper Supabase sync
+        if (onDeleteTransaction) {
+            onDeleteTransaction(item.id, tx.id);
+        }
         setEditingTransaction(null);
     };
 
     const handleAddDividend = () => {
-        const newDiv = {
-            id: Date.now(),
-            amount: 0,
-            date: new Date().toISOString().split('T')[0]
+        // Create a pending new dividend - NOT added to portfolio yet
+        const pendingDiv = {
+            id: `pending-div-${Date.now()}`,
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            divId: `pending-div-${Date.now()}`,
+            isPendingDividend: true
         };
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? { ...a, dividends: [...(a.dividends || []), newDiv] }
-                : a
-        ));
-        setEditingTransaction({ ...newDiv, divId: newDiv.id, amount: '' });
+        setEditingTransaction(pendingDiv);
     };
 
     const handleSaveDividend = (div) => {
+        if (!editingTransaction) return;
+        
         const amount = typeof editingTransaction.amount === 'string'
             ? parseFloat(editingTransaction.amount) || 0
             : editingTransaction.amount;
 
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? {
-                    ...a,
-                    dividends: a.dividends.map(d =>
-                        d.id === div.id
-                            ? { id: div.id, date: editingTransaction.date, amount: amount }
-                            : d
-                    )
-                }
-                : a
-        ));
+        if (amount <= 0) {
+            alert('Please enter a valid dividend amount');
+            return;
+        }
+        
+        // Validate date is not in the future
+        const divDate = new Date(editingTransaction.date);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (divDate > today) {
+            alert('Dividend date cannot be in the future');
+            return;
+        }
+
+        // Check if this is a NEW dividend or EXISTING one
+        if (editingTransaction.isPendingDividend) {
+            // Create new dividend
+            const newDiv = {
+                id: Date.now(),
+                date: editingTransaction.date,
+                amount: amount
+            };
+            if (onAddDividend) {
+                onAddDividend(item.id, newDiv);
+            }
+        } else {
+            // Update existing dividend - delete old and add new
+            const updatedDiv = {
+                id: Date.now(), // New ID since we're replacing
+                date: editingTransaction.date,
+                amount: amount
+            };
+            if (onDeleteDividend && onAddDividend) {
+                onDeleteDividend(item.id, div.id);
+                onAddDividend(item.id, updatedDiv);
+            }
+        }
         setEditingTransaction(null);
     };
 
     const handleDeleteDividend = (div) => {
-        setPortfolio(prev => prev.map(a =>
-            a.id === item.id
-                ? {
-                    ...a,
-                    dividends: a.dividends.filter(d => d.id !== div.id)
-                }
-                : a
-        ));
+        // Can't delete a pending dividend - just cancel
+        if (editingTransaction?.isPendingDividend) {
+            setEditingTransaction(null);
+            return;
+        }
+        
+        // Show confirmation dialog
+        const confirmDelete = window.confirm(
+            `Are you sure you want to delete this dividend?\n\nDate: ${div.date}\nAmount: ₹${div.amount.toFixed(2)}`
+        );
+        
+        if (!confirmDelete) return;
+        
+        // Use callback prop for proper Supabase sync
+        if (onDeleteDividend) {
+            onDeleteDividend(item.id, div.id);
+        }
         setEditingTransaction(null);
     };
 
@@ -222,44 +273,16 @@ const AssetRow = ({
                     </div>
                 </td>
 
-                {/* LTP (Edit) Column */}
+                {/* LTP Column */}
                 <td className="px-3 md:px-6 py-4 md:py-6 text-right tabular-nums">
-                    {editingId === item.id ? (
-                        <div className="flex items-center justify-end gap-2">
-                            <input
-                                autoFocus
-                                type="number"
-                                className="w-20 md:w-24 px-2 py-1 min-h-[36px] bg-white border border-indigo-300 rounded-lg text-right text-xs font-bold outline-none touch-manipulation"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSavePrice()}
-                            />
-                            <button
-                                onClick={handleSavePrice}
-                                className="text-indigo-600 p-2 min-w-[36px] min-h-[36px] flex items-center justify-center touch-manipulation"
-                            >
-                                <Save size={16} />
-                            </button>
-                        </div>
-                    ) : (
-                        <div
-                            className="cursor-pointer group/price inline-block"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditPrice();
-                            }}
-                        >
-                            <div className="font-black text-slate-800 flex items-center gap-1 justify-end text-xs md:text-sm">
-                                ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                                <Edit3 size={14} className="text-slate-300 opacity-0 group-hover/price:opacity-100" />
-                            </div>
-                            <div className={`text-[10px] font-black ${
-                                item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
-                            }`}>
-                                {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
-                            </div>
-                        </div>
-                    )}
+                    <div className="font-black text-slate-800 text-xs md:text-sm">
+                        ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </div>
+                    <div className={`text-[10px] font-black ${
+                        item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
+                    }`}>
+                        {item.dayChangePercent >= 0 ? '+' : ''}{item.dayChangePercent.toFixed(2)}%
+                    </div>
                 </td>
 
                 {/* P&L Analysis Column - Toggleable */}
@@ -540,6 +563,66 @@ const AssetRow = ({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
+                                            {/* Pending New Transaction Row */}
+                                            {editingTransaction?.isPending && (
+                                                <tr className="bg-indigo-50/50">
+                                                    <td className="px-3 md:px-4 py-2.5">
+                                                        <input
+                                                            type="date"
+                                                            value={editingTransaction.date}
+                                                            max={new Date().toISOString().split('T')[0]}
+                                                            onChange={e => setEditingTransaction({
+                                                                ...editingTransaction,
+                                                                date: e.target.value
+                                                            })}
+                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 touch-manipulation bg-white"
+                                                        />
+                                                    </td>
+                                                    <td className="px-3 md:px-4 py-2.5">
+                                                        <input
+                                                            type="number"
+                                                            inputMode="decimal"
+                                                            placeholder="Qty"
+                                                            value={editingTransaction.quantity || ''}
+                                                            onChange={e => setEditingTransaction({
+                                                                ...editingTransaction,
+                                                                quantity: e.target.value
+                                                            })}
+                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 touch-manipulation bg-white"
+                                                        />
+                                                    </td>
+                                                    <td className="px-3 md:px-4 py-2.5">
+                                                        <input
+                                                            type="number"
+                                                            inputMode="decimal"
+                                                            placeholder="Price"
+                                                            value={editingTransaction.price || ''}
+                                                            onChange={e => setEditingTransaction({
+                                                                ...editingTransaction,
+                                                                price: e.target.value
+                                                            })}
+                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border border-indigo-300 rounded text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 touch-manipulation bg-white"
+                                                        />
+                                                    </td>
+                                                    <td colSpan="4" className="px-3 md:px-4 py-2.5">
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={() => handleSaveTransaction(editingTransaction)}
+                                                                className="px-3 py-1 min-h-[36px] bg-emerald-600 text-white rounded text-[9px] font-bold hover:bg-emerald-700 touch-manipulation"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingTransaction(null)}
+                                                                className="px-3 py-1 min-h-[36px] bg-slate-200 text-slate-600 rounded text-[9px] font-bold hover:bg-slate-300 touch-manipulation"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {/* Existing Transactions */}
                                             {[...item.transactions]
                                                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                                                 .map((tx, idx) => {
@@ -550,12 +633,13 @@ const AssetRow = ({
 
                                                     return (
                                                         <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-colors">
-                                                            {editingTransaction?.id === tx.id ? (
+                                                            {editingTransaction?.id === tx.id && !editingTransaction?.isPending ? (
                                                                 <>
                                                                     <td className="px-3 md:px-4 py-2.5">
                                                                         <input
                                                                             type="date"
                                                                             value={editingTransaction.date}
+                                                                            max={new Date().toISOString().split('T')[0]}
                                                                             onChange={e => setEditingTransaction({
                                                                                 ...editingTransaction,
                                                                                 date: e.target.value
@@ -675,27 +759,74 @@ const AssetRow = ({
                             </div>
 
                             {/* Dividends Section */}
-                            {(item.dividends && item.dividends.length > 0) && (
+                            {((item.dividends && item.dividends.length > 0) || editingTransaction?.isPendingDividend) && (
                                 <div className="mt-4">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
                                         Dividends
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                                        {item.dividends.map((div, idx) => (
+                                        {/* Pending New Dividend */}
+                                        {editingTransaction?.isPendingDividend && (
+                                            <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-200">
+                                                <div className="space-y-2">
+                                                    <input
+                                                        type="date"
+                                                        value={editingTransaction.date}
+                                                        max={new Date().toISOString().split('T')[0]}
+                                                        onChange={e => setEditingTransaction({
+                                                            ...editingTransaction,
+                                                            date: e.target.value
+                                                        })}
+                                                        className="w-full min-h-[36px] px-2 py-1 text-[10px] border border-indigo-300 rounded touch-manipulation bg-white"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        step="0.01"
+                                                        min="0"
+                                                        placeholder="Amount (e.g. 15.50)"
+                                                        value={editingTransaction.amount}
+                                                        onChange={e => setEditingTransaction({
+                                                            ...editingTransaction,
+                                                            amount: e.target.value
+                                                        })}
+                                                        className="w-full min-h-[36px] px-2 py-1 text-[10px] border border-indigo-300 rounded touch-manipulation bg-white"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => handleSaveDividend(editingTransaction)}
+                                                            className="flex-1 px-2 py-1 min-h-[36px] bg-emerald-600 text-white rounded text-[9px] font-bold touch-manipulation"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingTransaction(null)}
+                                                            className="flex-1 px-2 py-1 min-h-[36px] bg-slate-200 text-slate-600 rounded text-[9px] font-bold touch-manipulation"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Existing Dividends */}
+                                        {(item.dividends || []).map((div, idx) => (
                                             <div key={div.id || idx} className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                                                {editingTransaction?.divId === div.id ? (
+                                                {editingTransaction?.divId === div.id && !editingTransaction?.isPendingDividend ? (
                                                     <div className="space-y-2">
                                                         <input
                                                             type="date"
                                                             value={editingTransaction.date}
+                                                            max={new Date().toISOString().split('T')[0]}
                                                             onChange={e => setEditingTransaction({
                                                                 ...editingTransaction,
                                                                 date: e.target.value
                                                             })}
-                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border rounded touch-manipulation"
+                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border rounded touch-manipulation bg-white"
                                                         />
                                                         <input
                                                             type="number"
+                                                            inputMode="decimal"
                                                             step="0.01"
                                                             min="0"
                                                             placeholder="Amount (e.g. 15.50)"
@@ -707,10 +838,10 @@ const AssetRow = ({
                                                                 const val = e.target.value;
                                                                 setEditingTransaction({
                                                                     ...editingTransaction,
-                                                                    amount: val === '' ? '' : (parseFloat(val) || 0)
+                                                                    amount: val === '' ? '' : val
                                                                 });
                                                             }}
-                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border rounded touch-manipulation"
+                                                            className="w-full min-h-[36px] px-2 py-1 text-[10px] border rounded touch-manipulation bg-white"
                                                         />
                                                         <div className="flex gap-2">
                                                             <button

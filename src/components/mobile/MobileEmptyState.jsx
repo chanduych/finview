@@ -10,10 +10,10 @@ const MobileEmptyState = ({ onAddAsset }) => {
         <div className="flex flex-col items-center justify-center text-center px-6 py-16 min-h-[60vh]">
             {/* Icon */}
             <div className="relative mb-6">
-                <div className="w-24 h-24 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-full flex items-center justify-center">
-                    <TrendingUp size={40} className="text-indigo-600" />
+                <div className="w-24 h-24 bg-gradient-to-br from-teal-100 to-teal-200 rounded-full flex items-center justify-center shadow-lg shadow-teal-100">
+                    <TrendingUp size={40} className="text-teal-600" />
                 </div>
-                <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center animate-pulse">
+                <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center animate-pulse shadow-md">
                     <Sparkles size={16} className="text-white" />
                 </div>
             </div>
@@ -29,7 +29,7 @@ const MobileEmptyState = ({ onAddAsset }) => {
             {/* CTA Button */}
             <button
                 onClick={onAddAsset}
-                className="w-full max-w-xs px-6 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-2xl font-black shadow-lg shadow-indigo-200 flex items-center justify-center gap-3 active:scale-95 transition-transform"
+                className="w-full max-w-xs px-6 py-4 bg-gradient-to-r from-teal-500 to-teal-700 text-white rounded-2xl font-black shadow-lg shadow-teal-200 flex items-center justify-center gap-3 active:scale-95 transition-transform press-effect"
             >
                 <PlusCircle size={24} />
                 Add First Investment
@@ -49,8 +49,8 @@ const MobileEmptyState = ({ onAddAsset }) => {
                     </div>
                 </div>
                 <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-indigo-600 font-black text-xs">✓</span>
+                    <div className="w-6 h-6 bg-teal-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-teal-600 font-black text-xs">✓</span>
                     </div>
                     <div>
                         <p className="text-xs font-black text-slate-700">Tax Intelligence</p>
