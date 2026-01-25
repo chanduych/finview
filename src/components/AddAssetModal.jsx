@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useSearch } from '../hooks/useSearch';
 import { verifySymbol, handleSelectResult as handleSelectResultService } from '../services/marketDataService';
+import { useDarkModeContext } from './MobileLayout';
 
 // Handle mobile keyboard - scroll focused input into view
 const handleInputFocus = (e) => {
@@ -41,11 +42,11 @@ const ASSET_TYPE_CONFIG = {
     MF: { 
         icon: PieChart, 
         label: 'Mutual Fund', 
-        color: 'violet',
-        bgClass: 'bg-violet-500',
-        lightBgClass: 'bg-violet-50',
-        textClass: 'text-violet-600',
-        borderClass: 'border-violet-500'
+        color: 'teal',
+        bgClass: 'bg-teal-500',
+        lightBgClass: 'bg-teal-50',
+        textClass: 'text-teal-600',
+        borderClass: 'border-teal-500'
     },
     ETF: { 
         icon: Layers, 
@@ -69,6 +70,10 @@ const AddAssetModal = ({
     selectedAccount,
     setSelectedAccount
 }) => {
+    // Dark mode context
+    const darkModeContext = useDarkModeContext();
+    const isDarkMode = darkModeContext?.isDarkMode || false;
+    
     // Form state
     const [selectedAssetType, setSelectedAssetType] = useState('STOCK');
     const [selectedAssetName, setSelectedAssetName] = useState('');
@@ -229,14 +234,14 @@ const AddAssetModal = ({
         >
             {/* Bottom Sheet */}
             <div 
-                className={`w-full bg-white dark:bg-slate-900 rounded-t-[28px] shadow-2xl flex flex-col transition-transform duration-200 ${
+                className={`w-full rounded-t-[28px] shadow-2xl flex flex-col transition-transform duration-200 ${
                     isClosing ? 'translate-y-full' : 'translate-y-0'
-                }`}
+                } ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}
                 style={{ maxHeight: '95dvh', height: 'auto' }}
             >
                 {/* Drag Handle */}
                 <div className="flex justify-center pt-3 pb-2">
-                    <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                    <div className={`w-10 h-1 rounded-full ${isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
                 </div>
 
                 {/* Header */}
@@ -246,7 +251,7 @@ const AddAssetModal = ({
                             <Plus size={22} className="text-white" strokeWidth={3} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-slate-800 dark:text-white">
+                            <h2 className={`text-lg font-black ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
                                 Add Investment
                             </h2>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -256,7 +261,9 @@ const AddAssetModal = ({
                     </div>
                     <button
                         onClick={handleClose}
-                        className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-transform ${
+                            isDarkMode ? 'bg-slate-800' : 'bg-slate-100'
+                        }`}
                     >
                         <X size={20} className="text-slate-500" />
                     </button>
@@ -287,7 +294,9 @@ const AddAssetModal = ({
                                         className={`flex-1 py-3 px-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${
                                             isActive 
                                                 ? `${config.bgClass} text-white shadow-lg` 
-                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                                : isDarkMode 
+                                                    ? 'bg-slate-800 text-slate-400' 
+                                                    : 'bg-slate-100 text-slate-600'
                                         }`}
                                     >
                                         <Icon size={16} strokeWidth={2.5} />
@@ -305,9 +314,13 @@ const AddAssetModal = ({
                         </label>
                         <button
                             onClick={() => setShowAccountPicker(true)}
-                            className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-between border border-slate-200 dark:border-slate-700 active:bg-slate-100"
+                            className={`w-full px-4 py-3.5 rounded-xl flex items-center justify-between border active:bg-slate-100 ${
+                                isDarkMode 
+                                    ? 'bg-slate-800 border-slate-700' 
+                                    : 'bg-slate-50 border-slate-200'
+                            }`}
                         >
-                            <span className="font-bold text-slate-700 dark:text-slate-200">{selectedAccount}</span>
+                            <span className={`font-bold ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>{selectedAccount}</span>
                             <ChevronDown size={18} className="text-slate-400" />
                         </button>
                     </div>
@@ -322,7 +335,11 @@ const AddAssetModal = ({
                                 <input
                                     type="text"
                                     placeholder={`Search ${assetConfig.label.toLowerCase()}s...`}
-                                    className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent uppercase text-sm"
+                                    className={`w-full px-4 py-3.5 rounded-xl border font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent uppercase text-sm ${
+                                        isDarkMode 
+                                            ? 'bg-slate-800 border-slate-700 text-white' 
+                                            : 'bg-slate-50 border-slate-200 text-slate-800'
+                                    }`}
                                     value={searchQuery}
                                     onChange={e => {
                                         const value = e.target.value;
@@ -353,8 +370,16 @@ const AddAssetModal = ({
 
                         {/* Search Results */}
                         {searchResults.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-[200] overflow-hidden max-h-60 overflow-y-auto">
-                                <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700">
+                            <div className={`absolute top-full left-0 right-0 mt-2 border rounded-2xl shadow-2xl z-[200] overflow-hidden max-h-60 overflow-y-auto ${
+                                isDarkMode 
+                                    ? 'bg-slate-800 border-slate-700' 
+                                    : 'bg-white border-slate-200'
+                            }`}>
+                                <div className={`px-4 py-2 border-b ${
+                                    isDarkMode 
+                                        ? 'bg-slate-900 border-slate-700' 
+                                        : 'bg-slate-50 border-slate-100'
+                                }`}>
                                     <p className="text-[10px] font-black text-slate-500 uppercase">
                                         {searchResults.length} results
                                     </p>
@@ -367,17 +392,21 @@ const AddAssetModal = ({
                                             e.stopPropagation();
                                             handleSelectResult(result);
                                         }}
-                                        className="w-full px-4 py-3 text-left flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 last:border-0 active:bg-slate-50 dark:active:bg-slate-700"
+                                        className={`w-full px-4 py-3 text-left flex items-center gap-3 border-b last:border-0 ${
+                                            isDarkMode 
+                                                ? 'border-slate-700 active:bg-slate-700' 
+                                                : 'border-slate-100 active:bg-slate-50'
+                                        }`}
                                     >
                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                                             result.searchType === 'MF'
-                                                ? 'bg-violet-100 text-violet-600'
+                                                ? 'bg-teal-100 text-teal-600'
                                                 : 'bg-teal-100 text-teal-600'
                                         }`}>
                                             {result.searchType === 'MF' ? <Building2 size={18} /> : <TrendingUp size={18} />}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">
+                                            <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
                                                 {result.schemeName || result.name || 'Unknown'}
                                             </p>
                                             <p className="text-[10px] text-slate-500 font-bold uppercase">
@@ -426,7 +455,11 @@ const AddAssetModal = ({
                                 type="number"
                                 inputMode="decimal"
                                 placeholder="0"
-                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base"
+                                className={`w-full px-4 py-3.5 rounded-xl border font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base ${
+                                    isDarkMode 
+                                        ? 'bg-slate-800 border-slate-700 text-white' 
+                                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                                }`}
                                 value={quantity}
                                 onChange={e => setQuantity(e.target.value)}
                                 onFocus={handleInputFocus}
@@ -440,7 +473,11 @@ const AddAssetModal = ({
                                 type="number"
                                 inputMode="decimal"
                                 placeholder="0.00"
-                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base"
+                                className={`w-full px-4 py-3.5 rounded-xl border font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base ${
+                                    isDarkMode 
+                                        ? 'bg-slate-800 border-slate-700 text-white' 
+                                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                                }`}
                                 value={buyPrice}
                                 onChange={e => setBuyPrice(e.target.value)}
                                 onFocus={handleInputFocus}
@@ -456,7 +493,11 @@ const AddAssetModal = ({
                         <input
                             type="date"
                             max={new Date().toISOString().split('T')[0]}
-                            className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className={`w-full px-4 py-3.5 rounded-xl border font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                                isDarkMode 
+                                    ? 'bg-slate-800 border-slate-700 text-white' 
+                                    : 'bg-slate-50 border-slate-200 text-slate-800'
+                            }`}
                             value={buyDate}
                             onChange={e => setBuyDate(e.target.value)}
                             onFocus={handleInputFocus}
@@ -472,7 +513,11 @@ const AddAssetModal = ({
                             <input
                                 type="text"
                                 placeholder="e.g. IT, Banking, Pharma..."
-                                className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                className={`w-full px-4 py-3.5 rounded-xl border font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                                    isDarkMode 
+                                        ? 'bg-slate-800 border-slate-700 text-white' 
+                                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                                }`}
                                 value={sector}
                                 onChange={e => setSector(e.target.value)}
                                 onFocus={handleInputFocus}
@@ -502,7 +547,9 @@ const AddAssetModal = ({
                                 ? 'bg-emerald-500 shadow-emerald-200'
                                 : isFormValid
                                     ? 'bg-gradient-to-r from-teal-500 to-teal-600 shadow-teal-200'
-                                    : 'bg-slate-300 dark:bg-slate-700 shadow-none'
+                                    : isDarkMode 
+                                        ? 'bg-slate-700 shadow-none' 
+                                        : 'bg-slate-300 shadow-none'
                         }`}
                     >
                         {addStatus === 'loading' ? (
@@ -532,14 +579,16 @@ const AddAssetModal = ({
                     onClick={() => setShowAccountPicker(false)}
                 >
                     <div 
-                        className="w-full bg-white dark:bg-slate-900 rounded-t-[28px] shadow-2xl overflow-hidden"
+                        className={`w-full rounded-t-[28px] shadow-2xl overflow-hidden ${
+                            isDarkMode ? 'bg-slate-900' : 'bg-white'
+                        }`}
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="flex justify-center pt-3 pb-2">
-                            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                            <div className={`w-10 h-1 rounded-full ${isDarkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
                         </div>
                         <div className="px-5 pb-2">
-                            <h3 className="text-base font-black text-slate-800 dark:text-white">Select Account</h3>
+                            <h3 className={`text-base font-black ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Select Account</h3>
                         </div>
                         <div className="px-3 pb-6 max-h-60 overflow-y-auto">
                             {accounts.map(acc => (
@@ -551,8 +600,12 @@ const AddAssetModal = ({
                                     }}
                                     className={`w-full px-4 py-3.5 rounded-xl flex items-center justify-between mb-1 transition-all ${
                                         selectedAccount === acc 
-                                            ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600' 
-                                            : 'text-slate-700 dark:text-slate-300 active:bg-slate-50'
+                                            ? isDarkMode 
+                                                ? 'bg-teal-900/30 text-teal-400' 
+                                                : 'bg-teal-50 text-teal-600'
+                                            : isDarkMode 
+                                                ? 'text-slate-300 active:bg-slate-800' 
+                                                : 'text-slate-700 active:bg-slate-50'
                                     }`}
                                 >
                                     <span className="font-bold">{acc}</span>

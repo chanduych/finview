@@ -85,13 +85,13 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                     <p className="text-[8px] font-black text-white/50 uppercase mb-1 tracking-wide">
                         Today
                     </p>
-                    <p className={`text-sm font-black truncate ${
-                        (stats.dayChange || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
-                    }`}>
+                    <p className="text-sm font-black truncate">
+                        {(stats.dayChange || 0) >= 0 ? '+' : ''}
                         <AnimatedNumber 
                             value={stats.dayChange || 0} 
                             format="currency" 
                             duration={800}
+                            className={(stats.dayChange || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}
                         />
                     </p>
                 </div>
@@ -100,14 +100,14 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                         XIRR
                     </p>
                     {stats.portfolioXIRR !== null && stats.portfolioXIRR !== undefined ? (
-                        <p className={`text-sm font-black ${
-                            stats.portfolioXIRR >= 0 ? 'text-emerald-300' : 'text-rose-300'
-                        }`}>
+                        <p className="text-sm font-black">
+                            {stats.portfolioXIRR >= 0 ? '+' : ''}
                             <AnimatedNumber 
                                 value={stats.portfolioXIRR} 
                                 format="percent" 
                                 duration={800}
                                 decimals={1}
+                                className={stats.portfolioXIRR >= 0 ? 'text-emerald-300' : 'text-rose-300'}
                             />
                         </p>
                     ) : (

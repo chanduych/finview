@@ -8,11 +8,29 @@ import { TrendingUp, PlusCircle, Sparkles } from 'lucide-react';
 const MobileEmptyState = ({ onAddAsset }) => {
     return (
         <div className="flex flex-col items-center justify-center text-center px-6 py-16 min-h-[60vh]">
-            {/* Icon */}
+            {/* Custom Illustration */}
             <div className="relative mb-6">
-                <div className="w-24 h-24 bg-gradient-to-br from-teal-100 to-teal-200 rounded-full flex items-center justify-center shadow-lg shadow-teal-100">
-                    <TrendingUp size={40} className="text-teal-600" />
-                </div>
+                <svg width="120" height="120" viewBox="0 0 120 120" className="mx-auto">
+                    {/* Background Circle */}
+                    <circle cx="60" cy="60" r="55" fill="url(#gradient1)" opacity="0.2" />
+                    {/* Chart Bars */}
+                    <rect x="30" y="70" width="12" height="20" rx="2" fill="#14B8A6" opacity="0.8" />
+                    <rect x="48" y="50" width="12" height="40" rx="2" fill="#14B8A6" opacity="0.9" />
+                    <rect x="66" y="40" width="12" height="50" rx="2" fill="#14B8A6" />
+                    <rect x="84" y="60" width="12" height="30" rx="2" fill="#14B8A6" opacity="0.7" />
+                    {/* Trend Line */}
+                    <path d="M 30 70 L 48 50 L 66 40 L 84 60" stroke="#14B8A6" strokeWidth="3" fill="none" strokeLinecap="round" />
+                    {/* Sparkle Points */}
+                    <circle cx="66" cy="40" r="4" fill="#FBBF24" className="animate-pulse" />
+                    <circle cx="48" cy="50" r="3" fill="#FBBF24" opacity="0.7" className="animate-pulse" style={{ animationDelay: '0.2s' }} />
+                    {/* Gradient Definition */}
+                    <defs>
+                        <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#14B8A6" />
+                            <stop offset="100%" stopColor="#0D9488" />
+                        </linearGradient>
+                    </defs>
+                </svg>
                 <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center animate-pulse shadow-md">
                     <Sparkles size={16} className="text-white" />
                 </div>

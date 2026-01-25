@@ -21,8 +21,21 @@ export function useDarkMode() {
     // Apply dark class to document
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      // Set color-scheme for iOS Safari - this tells the browser to use dark system UI
+      document.documentElement.style.colorScheme = 'dark';
+      // Also set on body for broader support
+      document.body.style.backgroundColor = '#0F172A';
     } else {
       document.documentElement.classList.remove('dark');
+      // Set color-scheme to light - this overrides iOS system dark mode
+      document.documentElement.style.colorScheme = 'light';
+      // Reset body background
+      document.body.style.backgroundColor = '#FFFFFF';
+    }
+    // Update meta theme-color for mobile browsers
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', isDarkMode ? '#0F172A' : '#0D9488');
     }
     // Persist preference
     localStorage.setItem('darkMode', isDarkMode.toString());

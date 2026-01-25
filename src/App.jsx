@@ -88,6 +88,9 @@ const App = () => {
         loading,
         error
     } = portfolioData;
+    
+    // Get accountsData for Supabase (contains full account objects with IDs)
+    const accountsData = useSupabase ? supabaseData.accountsData : null;
 
     // Debug: Log data source info (only in development)
     useEffect(() => {
@@ -155,6 +158,7 @@ const App = () => {
     const [isAddingWallet, setIsAddingWallet] = useState(false);
     const [newWalletName, setNewWalletName] = useState('');
     const [walletToDelete, setWalletToDelete] = useState(null);
+    const [isDeletingWallet, setIsDeletingWallet] = useState(false);
 
     // Asset deletion state
     const [assetToDelete, setAssetToDelete] = useState(null);
@@ -695,11 +699,35 @@ const App = () => {
     /**
      * Handle deleting a wallet/account
      */
-    const handleDeleteWallet = () => {
-        if (walletToDelete) {
-            deleteAccount(walletToDelete);
+    const handleDeleteWallet = async () => {
+        if (!walletToDelete) return;
+        
+        setIsDeletingWallet(true);
+        try {
+            // For Supabase, we need to find the account ID from the account name
+            if (useSupabase && accountsData) {
+                const accountToDelete = accountsData.find(acc => acc.name === walletToDelete);
+                if (accountToDelete) {
+                    await deleteAccount(accountToDelete.id);
+                } else {
+                    console.error('Account not found:', walletToDelete);
+                    alert('Account not found. Please refresh and try again.');
+                    setIsDeletingWallet(false);
+                    return;
+                }
+            } else {
+                // For localStorage, deleteAccount expects the account name
+                deleteAccount(walletToDelete);
+            }
+            
+            // Update active accounts filter
             setActiveAccounts(prev => prev.filter(acc => acc !== walletToDelete));
             setWalletToDelete(null);
+        } catch (error) {
+            console.error('Error deleting wallet:', error);
+            alert('Failed to delete wallet. Please try again.');
+        } finally {
+            setIsDeletingWallet(false);
         }
     };
 
@@ -811,15 +839,47 @@ const App = () => {
     }
     */
 
-    // Show loading for portfolio data
+    // Show loading for portfolio data - use skeleton loaders
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50">
-                <div className="text-center">
-                    <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
-                    <p className="text-slate-600">Loading your portfolio...</p>
-                </div>
-            </div>
+            <MobileLayout
+                currentView="portfolio"
+                onViewChange={setMobileView}
+                onQuickAdd={() => setShowAddModal(true)}
+                onOpenSettings={() => setShowSettings(true)}
+                stats={stats}
+            >
+                <MobilePortfolioView
+                    stats={stats}
+                    filteredPortfolio={[]}
+                    groupedPortfolio={{}}
+                    selectedView="ALL"
+                    setSelectedView={() => {}}
+                    onRefresh={refreshAllPrices}
+                    isRefreshing={isRefreshing}
+                    tableFilter=""
+                    setTableFilter={() => {}}
+                    expandedGroups={[]}
+                    toggleGroupExpansion={() => {}}
+                    pnlView="total"
+                    setPnlView={() => {}}
+                    onUpdateAsset={() => {}}
+                    onDeleteAsset={() => {}}
+                    onAddTransaction={() => {}}
+                    onUpdateTransaction={() => {}}
+                    onDeleteTransaction={() => {}}
+                    onAddDividend={() => {}}
+                    onDeleteDividend={() => {}}
+                    formatCurrency={formatCurrency}
+                    onQuickAdd={() => setShowAddModal(true)}
+                    accounts={accounts}
+                    activeAccounts={activeAccounts}
+                    setActiveAccounts={setActiveAccounts}
+                    activeAssetTypes={activeAssetTypes}
+                    setActiveAssetTypes={setActiveAssetTypes}
+                    isLoading={true}
+                />
+            </MobileLayout>
         );
     }
 
@@ -1044,12 +1104,12 @@ const App = () => {
             {walletToDelete && (
                 <ConfirmationModal
                     isOpen={!!walletToDelete}
-                    onClose={() => setWalletToDelete(null)}
+                    onClose={() => !isDeletingWallet && setWalletToDelete(null)}
                     onConfirm={handleDeleteWallet}
                     title="Delete Wallet"
-                    message={`Are you sure you want to delete "${walletToDelete}"? All assets in this wallet will be deleted.`}
+                    description={`Are you sure you want to delete "${walletToDelete}"? This will permanently delete all assets, transactions, and dividends in this wallet. This action cannot be undone.`}
                     confirmText="Delete"
-                    confirmStyle="danger"
+                    isLoading={isDeletingWallet}
                 />
             )}
 
@@ -1060,9 +1120,8 @@ const App = () => {
                     onClose={() => setAssetToDelete(null)}
                     onConfirm={handleDeleteAsset}
                     title="Delete Asset"
-                    message={`Are you sure you want to delete ${assetToDelete.symbol}? This will remove all transactions and data for this asset.`}
+                    description={`Are you sure you want to delete ${assetToDelete.symbol}? This will remove all transactions and data for this asset.`}
                     confirmText="Delete"
-                    confirmStyle="danger"
                 />
             )}
         </>

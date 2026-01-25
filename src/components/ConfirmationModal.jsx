@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Loader2 } from 'lucide-react';
 
 /**
  * ConfirmationModal Component
@@ -16,6 +16,7 @@ import { ShieldAlert } from 'lucide-react';
  * @param {string} [props.additionalInfo] - Optional additional information to display
  * @param {string} [props.confirmText="Delete"] - Text for the confirm button
  * @param {string} [props.cancelText="Cancel"] - Text for the cancel button
+ * @param {boolean} [props.isLoading=false] - Whether the action is in progress
  */
 const ConfirmationModal = ({
     isOpen,
@@ -25,13 +26,14 @@ const ConfirmationModal = ({
     description,
     additionalInfo,
     confirmText = "Delete",
-    cancelText = "Cancel"
+    cancelText = "Cancel",
+    isLoading = false
 }) => {
     if (!isOpen) return null;
 
-    const handleConfirm = () => {
-        onConfirm();
-        onClose();
+    const handleConfirm = async () => {
+        await onConfirm();
+        // Don't close automatically - let the parent handle it after async operation
     };
 
     return (
@@ -61,15 +63,24 @@ const ConfirmationModal = ({
                 <div className="flex flex-col sm:flex-row gap-3">
                     <button
                         onClick={onClose}
-                        className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-xl md:rounded-2xl font-bold text-xs uppercase min-h-[44px] touch-manipulation"
+                        disabled={isLoading}
+                        className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-xl md:rounded-2xl font-bold text-xs uppercase min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {cancelText}
                     </button>
                     <button
                         onClick={handleConfirm}
-                        className="flex-1 py-3 md:py-4 bg-rose-600 text-white rounded-xl md:rounded-2xl font-bold text-xs uppercase shadow-lg shadow-rose-100 min-h-[44px] touch-manipulation hover:bg-rose-700 transition-colors"
+                        disabled={isLoading}
+                        className="flex-1 py-3 md:py-4 bg-rose-600 text-white rounded-xl md:rounded-2xl font-bold text-xs uppercase shadow-lg shadow-rose-100 min-h-[44px] touch-manipulation hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                        {confirmText}
+                        {isLoading ? (
+                            <>
+                                <Loader2 size={16} className="animate-spin" />
+                                <span>Deleting...</span>
+                            </>
+                        ) : (
+                            confirmText
+                        )}
                     </button>
                 </div>
             </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Filter, X, Check, Lightbulb } from 'lucide-react';
 import PortfolioInsights from '../PortfolioInsights';
+import { useDarkModeContext } from '../MobileLayout';
 
 /**
  * MobileInsightsView - Full-screen insights view for mobile
@@ -15,6 +16,7 @@ const MobileInsightsView = ({
     setActiveAssetTypes
 }) => {
     const [showFilterSheet, setShowFilterSheet] = useState(false);
+    const { isDarkMode } = useDarkModeContext();
 
     // Calculate active filter count (wallets + asset types)
     const walletFilterCount = accounts.length - activeAccounts.length;
@@ -22,16 +24,20 @@ const MobileInsightsView = ({
     const activeFilterCount = walletFilterCount + assetFilterCount;
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
+        <div className={`flex flex-col h-full ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
             {/* Header - Enhanced */}
-            <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 p-4 sticky top-0 z-30 shadow-sm">
+            <div className={`border-b p-4 sticky top-0 z-30 shadow-sm ${
+                isDarkMode 
+                    ? 'bg-slate-800 border-slate-700' 
+                    : 'bg-white border-slate-100'
+            }`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm">
                             <Lightbulb size={20} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-lg font-black text-slate-800 dark:text-white heading-display">
+                            <h1 className={`text-lg font-black heading-display ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>
                                 Insights
                             </h1>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
@@ -44,7 +50,9 @@ const MobileInsightsView = ({
                         className={`p-3 rounded-xl border transition-all relative press-effect ${
                             activeFilterCount > 0
                                 ? 'bg-teal-600 text-white border-teal-600'
-                                : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                                : isDarkMode 
+                                    ? 'bg-slate-700 text-slate-300 border-slate-600' 
+                                    : 'bg-slate-50 text-slate-600 border-slate-200'
                         }`}
                     >
                         <Filter size={20} />
@@ -68,13 +76,21 @@ const MobileInsightsView = ({
             {/* Filter Bottom Sheet - Wallet and Asset Type Filters */}
             {showFilterSheet && (
                 <div className="fixed inset-0 z-[200] flex items-end bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-800 w-full rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom">
+                    <div className={`w-full rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom ${
+                        isDarkMode ? 'bg-slate-800' : 'bg-white'
+                    }`}>
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between flex-shrink-0">
-                            <h2 className="text-xl font-black text-slate-800 dark:text-white">Filter Portfolio</h2>
+                        <div className={`p-6 border-b flex items-center justify-between flex-shrink-0 ${
+                            isDarkMode ? 'border-slate-700' : 'border-slate-200'
+                        }`}>
+                            <h2 className={`text-xl font-black ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Filter Portfolio</h2>
                             <button
                                 onClick={() => setShowFilterSheet(false)}
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-600 dark:text-slate-300"
+                                className={`p-2 rounded-full transition-colors ${
+                                    isDarkMode 
+                                        ? 'hover:bg-slate-700 text-slate-300' 
+                                        : 'hover:bg-slate-100 text-slate-600'
+                                }`}
                             >
                                 <X size={24} />
                             </button>
@@ -84,7 +100,7 @@ const MobileInsightsView = ({
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
                             {/* Asset Types Section */}
                             <div>
-                                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase mb-4">
+                                <h3 className={`text-sm font-black uppercase mb-4 ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                                     Asset Types
                                 </h3>
                                 <div className="grid grid-cols-3 gap-3">
@@ -110,8 +126,12 @@ const MobileInsightsView = ({
                                                 }}
                                                 className={`p-3 rounded-xl border-2 transition-all text-center ${
                                                     isSelected 
-                                                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-500 text-teal-700 dark:text-teal-300' 
-                                                        : 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400'
+                                                        ? isDarkMode 
+                                                            ? 'bg-teal-900/30 border-teal-500 text-teal-300'
+                                                            : 'bg-teal-50 border-teal-500 text-teal-700'
+                                                        : isDarkMode 
+                                                            ? 'bg-slate-700 border-slate-600 text-slate-400'
+                                                            : 'bg-slate-50 border-slate-200 text-slate-600'
                                                 }`}
                                             >
                                                 <span className="text-xs font-bold">{asset.label}</span>
@@ -123,7 +143,7 @@ const MobileInsightsView = ({
 
                             {/* Wallets Section */}
                             <div>
-                                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase mb-4">
+                                <h3 className={`text-sm font-black uppercase mb-4 ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                                     Wallets
                                 </h3>
                                 <div className="space-y-3">
@@ -145,11 +165,19 @@ const MobileInsightsView = ({
                                                 }}
                                                 className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
                                                     isSelected 
-                                                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-500' 
-                                                        : 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600'
+                                                        ? isDarkMode 
+                                                            ? 'bg-teal-900/30 border-teal-500'
+                                                            : 'bg-teal-50 border-teal-500'
+                                                        : isDarkMode 
+                                                            ? 'bg-slate-700 border-slate-600'
+                                                            : 'bg-slate-50 border-slate-200'
                                                 }`}
                                             >
-                                                <span className={`text-sm font-bold ${isSelected ? 'text-teal-700 dark:text-teal-300' : 'text-slate-600 dark:text-slate-400'}`}>
+                                                <span className={`text-sm font-bold ${
+                                                    isSelected 
+                                                        ? isDarkMode ? 'text-teal-300' : 'text-teal-700' 
+                                                        : isDarkMode ? 'text-slate-400' : 'text-slate-600'
+                                                }`}>
                                                     {account}
                                                 </span>
                                                 {isSelected && (
@@ -158,7 +186,9 @@ const MobileInsightsView = ({
                                                     </div>
                                                 )}
                                                 {!isSelected && (
-                                                    <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-500 rounded" />
+                                                    <div className={`w-5 h-5 border-2 rounded ${
+                                                        isDarkMode ? 'border-slate-500' : 'border-slate-300'
+                                                    }`} />
                                                 )}
                                             </button>
                                         );
@@ -168,12 +198,14 @@ const MobileInsightsView = ({
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="p-6 border-t border-slate-200 dark:border-slate-700 space-y-3 flex-shrink-0">
+                        <div className={`p-6 border-t space-y-3 flex-shrink-0 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
                             <button
                                 onClick={() => {
                                     setShowFilterSheet(false);
                                 }}
-                                className="w-full py-4 bg-teal-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-teal-200 dark:shadow-none active:bg-teal-700 transition-all"
+                                className={`w-full py-4 bg-teal-600 text-white rounded-2xl font-black text-sm active:bg-teal-700 transition-all ${
+                                    isDarkMode ? '' : 'shadow-lg shadow-teal-200'
+                                }`}
                             >
                                 Done
                             </button>
@@ -187,7 +219,11 @@ const MobileInsightsView = ({
                                     }
                                     setShowFilterSheet(false);
                                 }}
-                                className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm active:bg-slate-200 dark:active:bg-slate-600 transition-all"
+                                className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
+                                    isDarkMode 
+                                        ? 'bg-slate-700 text-slate-300 active:bg-slate-600' 
+                                        : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                                }`}
                             >
                                 Clear All Filters
                             </button>

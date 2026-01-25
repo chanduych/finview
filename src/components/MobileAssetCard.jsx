@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     ChevronDown, Plus, Trash2,
     TrendingUp, TrendingDown, ShieldAlert, BarChart3, Briefcase, Layers,
-    Calendar, Clock, Coins, X, Check, AlertCircle, Edit3
+    Calendar, Clock, Coins, X, Check, AlertCircle, Edit3, Loader2
 } from 'lucide-react';
 import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters';
+import { useDarkModeContext } from './MobileLayout';
 
 // Asset type icon component
 const AssetTypeIcon = ({ type, size = 18 }) => {
@@ -62,11 +63,16 @@ const MobileAssetCard = ({
     onAddDividend,
     onDeleteDividend
 }) => {
+    // Dark mode context
+    const darkModeContext = useDarkModeContext();
+    const isDarkMode = darkModeContext?.isDarkMode || false;
+    
     const [isExpanded, setIsExpanded] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [showTransactions, setShowTransactions] = useState(true);
     const [showDividends, setShowDividends] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(null);
+    const [saving, setSaving] = useState(false); // Loading state for save operations
 
     const handleAddTransaction = () => {
         const pendingTx = {
@@ -80,8 +86,8 @@ const MobileAssetCard = ({
         setShowTransactions(true);
     };
 
-    const handleSaveTransaction = () => {
-        if (!editingTransaction) return;
+    const handleSaveTransaction = async () => {
+        if (!editingTransaction || saving) return;
         
         const quantity = parseFloat(editingTransaction.quantity) || 0;
         const price = parseFloat(editingTransaction.price) || 0;
@@ -99,34 +105,58 @@ const MobileAssetCard = ({
             return;
         }
 
-        const transactionData = {
-            id: editingTransaction.isPending ? Date.now() : editingTransaction.id,
-            price,
-            quantity,
-            date: editingTransaction.date
-        };
+        setSaving(true);
+        
+        try {
+            const transactionData = {
+                id: editingTransaction.isPending ? Date.now() : editingTransaction.id,
+                price,
+                quantity,
+                date: editingTransaction.date
+            };
 
-        if (editingTransaction.isPending) {
-            onAddTransaction(item, transactionData);
-        } else {
-            onUpdateTransaction(item, transactionData);
+            if (editingTransaction.isPending) {
+                onAddTransaction(item, transactionData);
+            } else {
+                onUpdateTransaction(item, transactionData);
+            }
+            
+            // Small delay to show loading state
+            await new Promise(resolve => setTimeout(resolve, 300));
+            setEditingTransaction(null);
+        } catch (error) {
+            console.error('Error saving transaction:', error);
+            alert('Failed to save transaction. Please try again.');
+        } finally {
+            setSaving(false);
         }
-        setEditingTransaction(null);
     };
 
     const handleDeleteTransaction = (txId, tx) => {
         setConfirmDelete({ type: 'transaction', id: txId, data: tx });
     };
 
-    const handleConfirmDelete = () => {
-        if (!confirmDelete) return;
-        if (confirmDelete.type === 'transaction') {
-            onDeleteTransaction(item, confirmDelete.id, confirmDelete.data);
-        } else if (confirmDelete.type === 'dividend') {
-            onDeleteDividend(item, confirmDelete.id, confirmDelete.data);
+    const handleConfirmDelete = async () => {
+        if (!confirmDelete || saving) return;
+        
+        setSaving(true);
+        try {
+            if (confirmDelete.type === 'transaction') {
+                onDeleteTransaction(item, confirmDelete.id, confirmDelete.data);
+            } else if (confirmDelete.type === 'dividend') {
+                onDeleteDividend(item, confirmDelete.id, confirmDelete.data);
+            }
+            
+            // Small delay to show loading state
+            await new Promise(resolve => setTimeout(resolve, 300));
+            setConfirmDelete(null);
+            setEditingTransaction(null);
+        } catch (error) {
+            console.error('Error deleting:', error);
+            alert('Failed to delete. Please try again.');
+        } finally {
+            setSaving(false);
         }
-        setConfirmDelete(null);
-        setEditingTransaction(null);
     };
 
     const handleAddDividend = () => {
@@ -140,8 +170,8 @@ const MobileAssetCard = ({
         setShowDividends(true);
     };
 
-    const handleSaveDividend = () => {
-        if (!editingTransaction || !editingTransaction.isPendingDividend) return;
+    const handleSaveDividend = async () => {
+        if (!editingTransaction || !editingTransaction.isPendingDividend || saving) return;
 
         const amount = parseFloat(editingTransaction.amount) || 0;
         if (amount <= 0) {
@@ -157,12 +187,24 @@ const MobileAssetCard = ({
             return;
         }
 
-        onAddDividend(item, {
-            id: Date.now(),
-            amount,
-            date: editingTransaction.date
-        });
-        setEditingTransaction(null);
+        setSaving(true);
+        
+        try {
+            onAddDividend(item, {
+                id: Date.now(),
+                amount,
+                date: editingTransaction.date
+            });
+            
+            // Small delay to show loading state
+            await new Promise(resolve => setTimeout(resolve, 300));
+            setEditingTransaction(null);
+        } catch (error) {
+            console.error('Error saving dividend:', error);
+            alert('Failed to save dividend. Please try again.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     // Calculate totals
@@ -171,7 +213,7 @@ const MobileAssetCard = ({
     const dividendYield = totalInvested > 0 ? (totalDividends / totalInvested) * 100 : 0;
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl card-shadow border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300">
             {/* Confirmation Modal */}
             {confirmDelete && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
@@ -194,9 +236,20 @@ const MobileAssetCard = ({
                             </button>
                             <button
                                 onClick={handleConfirmDelete}
-                                className="flex-1 py-3 rounded-xl bg-rose-500 text-white font-bold"
+                                disabled={saving}
+                                className={`flex-1 py-3 rounded-xl text-white font-bold flex items-center justify-center gap-1 transition-all ${
+                                    saving 
+                                        ? 'bg-rose-400 cursor-not-allowed' 
+                                        : 'bg-rose-500 active:scale-95'
+                                }`}
                             >
-                                Delete
+                                {saving ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" /> Deleting...
+                                    </>
+                                ) : (
+                                    'Delete'
+                                )}
                             </button>
                         </div>
                     </div>
@@ -209,12 +262,12 @@ const MobileAssetCard = ({
                 className="p-3 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors"
             >
                 <div className="flex items-center gap-2.5">
-                    {/* Compact Asset Icon */}
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        item.type === 'STOCK' ? 'bg-gradient-to-br from-teal-400 to-teal-600' :
-                        item.type === 'MF' ? 'bg-gradient-to-br from-violet-400 to-violet-600' :
-                        'bg-gradient-to-br from-amber-400 to-amber-600'
-                    } text-white`}>
+                    {/* Compact Asset Icon with Pattern */}
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-white ${
+                        item.type === 'STOCK' ? 'asset-pattern-stock' :
+                        item.type === 'MF' ? 'asset-pattern-mf' :
+                        'asset-pattern-etf'
+                    }`}>
                         <AssetTypeIcon type={item.type} size={16} />
                         </div>
 
@@ -377,10 +430,32 @@ const MobileAssetCard = ({
                                     </div>
                                 )}
                                         <div className="flex gap-2">
-                                            <button onClick={handleSaveTransaction} className="flex-1 py-3 bg-teal-500 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1">
-                                                <Check size={16} /> Save
+                                            <button 
+                                                onClick={handleSaveTransaction} 
+                                                disabled={saving}
+                                                className={`flex-1 py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1 transition-all ${
+                                                    saving 
+                                                        ? 'bg-teal-400 cursor-not-allowed' 
+                                                        : 'bg-teal-500 active:scale-95'
+                                                }`}
+                                            >
+                                                {saving ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" /> Saving...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Check size={16} /> Save
+                                                    </>
+                                                )}
                                             </button>
-                                            <button onClick={() => setEditingTransaction(null)} className="flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
+                                            <button 
+                                                onClick={() => setEditingTransaction(null)} 
+                                                disabled={saving}
+                                                className={`flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all ${
+                                                    saving ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+                                                }`}
+                                            >
                                                 Cancel
                                             </button>
                             </div>
@@ -439,12 +514,32 @@ const MobileAssetCard = ({
                                                     />
                                                 </div>
                                                 <div className="flex gap-2">
-                                                                    <button onClick={handleSaveTransaction} className="flex-1 py-3 bg-amber-500 text-white rounded-xl text-sm font-bold">
-                                                        Save
-                                                    </button>
-                                                                    <button onClick={() => setEditingTransaction(null)} className="flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
-                                                        Cancel
-                                                    </button>
+                                                                    <button 
+                                                                        onClick={handleSaveTransaction} 
+                                                                        disabled={saving}
+                                                                        className={`flex-1 py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1 transition-all ${
+                                                                            saving 
+                                                                                ? 'bg-amber-400 cursor-not-allowed' 
+                                                                                : 'bg-amber-500 active:scale-95'
+                                                                        }`}
+                                                                    >
+                                                                        {saving ? (
+                                                                            <>
+                                                                                <Loader2 size={14} className="animate-spin" /> Saving...
+                                                                            </>
+                                                                        ) : (
+                                                                            'Save'
+                                                                        )}
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => setEditingTransaction(null)} 
+                                                                        disabled={saving}
+                                                                        className={`flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all ${
+                                                                            saving ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+                                                                        }`}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
                                                                     <button onClick={() => handleDeleteTransaction(tx.id, tx)} className="px-4 py-3 bg-rose-500 text-white rounded-xl">
                                                         <Trash2 size={16} />
                                                     </button>
@@ -573,10 +668,32 @@ const MobileAssetCard = ({
                                             className="w-full px-4 py-3 border border-emerald-200 dark:border-emerald-700 rounded-xl text-base bg-white dark:bg-slate-800"
                                         />
                                         <div className="flex gap-2">
-                                            <button onClick={handleSaveDividend} className="flex-1 py-3 bg-emerald-500 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1">
-                                                <Check size={16} /> Save
+                                            <button 
+                                                onClick={handleSaveDividend} 
+                                                disabled={saving}
+                                                className={`flex-1 py-3 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-1 transition-all ${
+                                                    saving 
+                                                        ? 'bg-emerald-400 cursor-not-allowed' 
+                                                        : 'bg-emerald-500 active:scale-95'
+                                                }`}
+                                            >
+                                                {saving ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" /> Saving...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Check size={16} /> Save
+                                                    </>
+                                                )}
                                             </button>
-                                            <button onClick={() => setEditingTransaction(null)} className="flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
+                                            <button 
+                                                onClick={() => setEditingTransaction(null)} 
+                                                disabled={saving}
+                                                className={`flex-1 py-3 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold transition-all ${
+                                                    saving ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+                                                }`}
+                                            >
                                                 Cancel
                                             </button>
                                         </div>

@@ -49,8 +49,88 @@
   --border-subtle: #F1F5F9;
 }
 
+/* Force light mode color scheme when not dark */
+html:not(.dark) {
+  color-scheme: light !important;
+}
+
+html:not(.dark) body {
+  background-color: #FFFFFF !important;
+}
+
+/* Force light mode backgrounds on iOS Safari when app is in light mode */
+/* This overrides iOS's automatic dark mode application */
+@media (prefers-color-scheme: dark) {
+  html:not(.dark) {
+    color-scheme: light !important;
+  }
+  
+  html:not(.dark) body {
+    background-color: #FFFFFF !important;
+  }
+  
+  /* Force light backgrounds for main containers */
+  html:not(.dark) .bg-white {
+    background-color: #FFFFFF !important;
+  }
+  
+  html:not(.dark) .bg-slate-50 {
+    background-color: #F8FAFC !important;
+  }
+  
+  html:not(.dark) .bg-slate-100 {
+    background-color: #F1F5F9 !important;
+  }
+  
+  /* Force dark text for slate colors */
+  html:not(.dark) .text-slate-800 {
+    color: #1E293B !important;
+  }
+  
+  html:not(.dark) .text-slate-700 {
+    color: #334155 !important;
+  }
+  
+  /* Force light borders */
+  html:not(.dark) .border-slate-200 {
+    border-color: #E2E8F0 !important;
+  }
+  
+  html:not(.dark) .border-slate-100 {
+    border-color: #F1F5F9 !important;
+  }
+  
+  /* Input fields in light mode */
+  html:not(.dark) input,
+  html:not(.dark) select,
+  html:not(.dark) textarea {
+    background-color: #F8FAFC !important;
+    color: #1E293B !important;
+  }
+}
+
+/* IMPORTANT: Preserve white text inside gradient cards - must come after media query */
+.premium-gradient,
+.premium-gradient * {
+  color: white;
+}
+
+.premium-gradient .text-white,
+.premium-gradient .text-white\/80,
+.premium-gradient .text-white\/60,
+.premium-gradient .text-white\/50 {
+  color: inherit !important;
+}
+
+/* Specific text colors inside premium-gradient */
+.premium-gradient .text-emerald-300 { color: #6ee7b7 !important; }
+.premium-gradient .text-emerald-200 { color: #a7f3d0 !important; }
+.premium-gradient .text-rose-300 { color: #fda4af !important; }
+.premium-gradient .text-rose-200 { color: #fecdd3 !important; }
+
 /* Dark mode colors */
 .dark {
+  color-scheme: dark !important;
   --bg-primary: #0F172A;
   --bg-secondary: #1E293B;
   --bg-tertiary: #334155;
@@ -265,13 +345,32 @@ body.modal-open {
   overflow: hidden;
 }
 
-/* Button press effect */
+/* Button press effect - Enhanced with fade */
 .press-effect {
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.15s ease-out,
+              box-shadow 0.15s ease-out;
 }
 
 .press-effect:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+/* Enhanced button press with fade */
+.button-press {
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.1s ease-out,
+              box-shadow 0.1s ease-out;
+}
+
+.button-press:active {
   transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.button-press:active.shadow-lg {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 /* Enhanced P&L colors - vibrant and clear */
@@ -308,6 +407,151 @@ body.modal-open {
   background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-700) 50%, var(--color-primary-800) 100%);
   position: relative;
   overflow: hidden;
+}
+
+/* Premium gradient for gains - Very light, easy on eyes */
+.premium-gradient-gain {
+  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 50%, #10B981 100%);
+  position: relative;
+  overflow: hidden;
+  opacity: 0.75;
+}
+
+/* Premium gradient for losses - Very light, easy on eyes */
+.premium-gradient-loss {
+  background: linear-gradient(135deg, #FCA5A5 0%, #F87171 50%, #EF4444 100%);
+  position: relative;
+  overflow: hidden;
+  opacity: 0.75;
+}
+
+/* Flip animation for numbers */
+@keyframes flip {
+  0% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(90deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}
+
+.flip-animation {
+  animation: flip 0.3s ease-in-out;
+  transform-style: preserve-3d;
+}
+
+/* Shimmer effect for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+.shimmer-dark {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Enhanced card shadows - layered depth */
+.card-shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.card-shadow {
+  box-shadow: 
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06),
+    0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.card-shadow-md {
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06),
+    0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.card-shadow-lg {
+  box-shadow: 
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05),
+    0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.card-shadow-xl {
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04),
+    0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Asset type patterns */
+.asset-pattern-stock {
+  background: linear-gradient(135deg, #14B8A6 0%, #0D9488 50%, #0F766E 100%);
+  position: relative;
+}
+
+.asset-pattern-stock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, rgba(255,255,255,0.1) 4px);
+  opacity: 0.3;
+}
+
+.asset-pattern-mf {
+  background: linear-gradient(135deg, #2DD4BF 0%, #14B8A6 50%, #0D9488 100%);
+  position: relative;
+}
+
+.asset-pattern-mf::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0);
+  background-size: 8px 8px;
+  opacity: 0.4;
+}
+
+.asset-pattern-etf {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 50%, #B45309 100%);
+  position: relative;
+}
+
+.asset-pattern-etf::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%),
+    linear-gradient(0deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
+  background-size: 6px 6px;
+  opacity: 0.3;
 }
 
 .premium-gradient::before {

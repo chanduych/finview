@@ -5,6 +5,7 @@ import { useDarkModeContext } from '../MobileLayout';
 import MobileAssetCard from '../MobileAssetCard';
 import MobilePortfolioSummaryCard from './MobilePortfolioSummaryCard';
 import MobileEmptyState from './MobileEmptyState';
+import { PortfolioSummarySkeleton, AssetCardSkeleton, GroupHeaderSkeleton } from '../SkeletonLoader';
 
 /**
  * MobilePortfolioView - Main portfolio view for mobile
@@ -37,7 +38,8 @@ const MobilePortfolioView = ({
     activeAccounts = [],
     setActiveAccounts,
     activeAssetTypes = ['STOCK', 'MF', 'ETF'],
-    setActiveAssetTypes
+    setActiveAssetTypes,
+    isLoading = false
 }) => {
     const [showFilters, setShowFilters] = useState(false);
     const [showFilterSheet, setShowFilterSheet] = useState(false);
@@ -289,8 +291,16 @@ const MobilePortfolioView = ({
 
             {/* Portfolio Cards - Scrollable */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                {/* Show Empty State */}
-                {isEmptyPortfolio ? (
+                {/* Show Loading Skeletons */}
+                {isLoading ? (
+                    <>
+                        <PortfolioSummarySkeleton />
+                        <GroupHeaderSkeleton />
+                        {[1, 2, 3].map((i) => (
+                            <AssetCardSkeleton key={i} />
+                        ))}
+                    </>
+                ) : isEmptyPortfolio ? (
                     <MobileEmptyState onAddAsset={onQuickAdd} />
                 ) : (
                     <>
@@ -367,14 +377,14 @@ const MobilePortfolioView = ({
                                             }`}
                                         >
                                             <div className="flex items-center gap-2">
-                                                <div className={`rounded-xl flex items-center justify-center transition-all ${
+                                                <div className={`rounded-xl flex items-center justify-center transition-all relative overflow-hidden ${
                                                     isHeaderSticky ? 'w-7 h-7 text-sm' : 'w-9 h-9 text-base'
                                                 } ${
                                                     type === 'STOCK' 
-                                                        ? 'bg-gradient-to-br from-teal-400 to-teal-600' 
-                                                        : type === 'MF' 
-                                                            ? 'bg-gradient-to-br from-violet-400 to-violet-600' 
-                                                            : 'bg-gradient-to-br from-amber-400 to-amber-600'
+                                                        ? 'asset-pattern-stock' 
+                                                        : type === 'MF'
+                                                            ? 'asset-pattern-mf' 
+                                                            : 'asset-pattern-etf'
                                                 } text-white shadow-md`}>
                                                     {type === 'STOCK' ? '📈' : type === 'MF' ? '💼' : '📦'}
                                                 </div>
@@ -611,7 +621,9 @@ const MobilePortfolioView = ({
                                                 onClick={() => toggleTempAsset(asset.value)}
                                                 className={`p-3 rounded-xl border-2 transition-all text-center ${
                                                     isSelected 
-                                                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-500 text-teal-700 dark:text-teal-300' 
+                                                        ? isDarkMode 
+                                                            ? 'bg-teal-900/30 border-teal-500 text-teal-300'
+                                                            : 'bg-teal-50 border-teal-500 text-teal-700'
                                                         : isDarkMode
                                                             ? 'bg-slate-700 border-slate-600 text-slate-400'
                                                             : 'bg-slate-50 border-slate-200 text-slate-600'
@@ -638,7 +650,9 @@ const MobilePortfolioView = ({
                                                 onClick={() => toggleTempWallet(account)}
                                                 className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
                                                     isSelected 
-                                                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-500' 
+                                                        ? isDarkMode 
+                                                            ? 'bg-teal-900/30 border-teal-500'
+                                                            : 'bg-teal-50 border-teal-500'
                                                         : isDarkMode
                                                             ? 'bg-slate-700 border-slate-600'
                                                             : 'bg-slate-50 border-slate-200'
@@ -646,7 +660,7 @@ const MobilePortfolioView = ({
                                             >
                                                 <span className={`text-sm font-bold ${
                                                     isSelected 
-                                                        ? 'text-teal-700 dark:text-teal-300' 
+                                                        ? isDarkMode ? 'text-teal-300' : 'text-teal-700'
                                                         : isDarkMode ? 'text-slate-400' : 'text-slate-600'
                                                 }`}>
                                                     {account}
@@ -672,7 +686,9 @@ const MobilePortfolioView = ({
                         <div className={`p-6 border-t space-y-3 flex-shrink-0 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
                             <button
                                 onClick={applyFilters}
-                                className="w-full py-4 bg-teal-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-teal-200 dark:shadow-none active:bg-teal-700 transition-all"
+                                className={`w-full py-4 bg-teal-600 text-white rounded-2xl font-black text-sm active:bg-teal-700 transition-all ${
+                                    isDarkMode ? '' : 'shadow-lg shadow-teal-200'
+                                }`}
                             >
                                 Apply Filters
                             </button>

@@ -96,7 +96,7 @@ const SettingsModal = ({
                                     </span>
                                     <button
                                         onClick={() => onDeleteWallet(acc)}
-                                        className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+                                        className="text-slate-400 hover:text-rose-500 active:text-rose-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation active:scale-95"
                                         title="Delete Wallet"
                                         aria-label={`Delete wallet ${acc}`}
                                     >

@@ -83,7 +83,8 @@ export default function AnimatedNumber({
           maximumFractionDigits: decimals,
         }).format(val);
       case 'percent':
-        return `${val >= 0 ? '+' : ''}${val.toFixed(decimals)}%`;
+        // Don't add + sign here - let the parent component handle it if needed
+        return `${val.toFixed(decimals)}%`;
       case 'number':
       default:
         return new Intl.NumberFormat('en-IN', {
