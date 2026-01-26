@@ -96,7 +96,8 @@ export const getPortfolios = async () => {
         id: t.id,
         quantity: parseFloat(t.quantity),
         price: parseFloat(t.price),
-        date: t.date
+        date: t.date,
+        type: t.type || 'BUY' // Default to BUY for backward compatibility
       })),
       dividends: p.dividends.map(d => ({
         id: d.id,
@@ -194,6 +195,12 @@ export const deletePortfolio = async (portfolioId) => {
 
 /**
  * Create a new transaction
+ * @param {string} portfolioId - Portfolio ID
+ * @param {Object} transactionData - Transaction data
+ * @param {number} transactionData.quantity - Quantity
+ * @param {number} transactionData.price - Price per unit
+ * @param {string} transactionData.date - Transaction date (YYYY-MM-DD)
+ * @param {string} [transactionData.type='BUY'] - Transaction type: 'BUY' or 'SELL'
  */
 export const createTransaction = async (portfolioId, transactionData) => {
   try {
@@ -207,7 +214,8 @@ export const createTransaction = async (portfolioId, transactionData) => {
         user_id: user.id,
         quantity: transactionData.quantity,
         price: transactionData.price,
-        date: transactionData.date
+        date: transactionData.date,
+        type: transactionData.type || 'BUY' // Default to BUY if not specified
       }])
       .select()
       .single();

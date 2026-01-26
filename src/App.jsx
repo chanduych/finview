@@ -34,7 +34,9 @@ import { useAuth } from './contexts/AuthContext';
 // ============================================================================
 import { formatCurrency, formatCurrencyWithDecimals } from './utils/formatters';
 import { calculateXIRR, calculateCapitalGains } from './utils/calculations';
+import { calculateFIFORealizedGains, calculateRealizedCapitalGains, calculateUnrealizedCapitalGains } from './utils/fifoCalculations';
 import { handleExport, handleImport, getYearWiseSummary } from './utils/importExport';
+import { runTransactionTypeMigration } from './utils/migrateTransactionType';
 import { COLORS, APP_ID } from './constants/appConfig';
 import { TAX_RATES, LTCG_EXEMPTION } from './constants/taxConfig';
 import { TrendingUp, PieChart, AlertTriangle, TrendingDown, BarChart3, Loader2 } from 'lucide-react';
@@ -66,6 +68,14 @@ const App = () => {
     // Choose which data source to use based on config and auth
     const useSupabase = hasSupabaseConfig && user;
     const portfolioData = useSupabase ? supabaseData : localStorageData;
+
+    // Run migration for localStorage data (one-time migration)
+    useEffect(() => {
+        if (!useSupabase) {
+            // Only run migration for localStorage users
+            runTransactionTypeMigration();
+        }
+    }, [useSupabase]); // Run once when data source is determined
 
     // Destructure the chosen data
     const {
@@ -111,6 +121,7 @@ const App = () => {
     // ========================================================================
     const [activeAccounts, setActiveAccounts] = useState(accounts);
     const [activeAssetTypes, setActiveAssetTypes] = useState(['STOCK', 'MF', 'ETF']);
+    const [showFullySoldAssets, setShowFullySoldAssets] = useState(false); // Phase 5: Toggle for fully sold assets
     const [showAddModal, setShowAddModal] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showReportsModal, setShowReportsModal] = useState(false);
@@ -177,58 +188,147 @@ const App = () => {
     /**
      * Process portfolio data with calculated values
      * Adds: avgPrice, currentPrice, currentValue, investedValue, absReturn, xirr, etc.
+     * Now handles BUY/SELL transactions separately using FIFO
      */
     const processedPortfolio = useMemo(() => {
         return portfolio.map(asset => {
-            const totalQty = asset.transactions.reduce((s, t) => s + t.quantity, 0);
-            const totalCost = asset.transactions.reduce((s, t) => s + (t.quantity * t.price), 0);
-            const totalDividends = (asset.dividends || []).reduce((s, d) => s + d.amount, 0);
-            const avgPrice = totalQty > 0 ? totalCost / totalQty : 0;
+            // Separate BUY and SELL transactions
+            const buyTransactions = asset.transactions.filter(tx => (tx.type || 'BUY') === 'BUY');
+            const sellTransactions = asset.transactions.filter(tx => (tx.type || 'BUY') === 'SELL');
 
+            // Calculate holdings: Buy quantity - Sell quantity
+            const buyQty = buyTransactions.reduce((s, t) => s + t.quantity, 0);
+            const sellQty = sellTransactions.reduce((s, t) => s + t.quantity, 0);
+            const totalQty = buyQty - sellQty; // Current holdings
+
+            // Total invested from BUY transactions
+            const totalBuyAmount = buyTransactions.reduce((s, t) => s + (t.quantity * t.price), 0);
+            
+            // Get market price first (needed for FIFO calculation)
             const marketData = marketPrices[asset.symbol];
-            const currentPrice = marketData?.price || avgPrice;
-            const currentValue = totalQty * currentPrice;
-            const investedValue = totalCost;
+            const tempAvgPrice = buyQty > 0 ? totalBuyAmount / buyQty : 0;
+            const tempCurrentPrice = marketData?.price || tempAvgPrice;
+            
+            // Calculate realized gains using FIFO (this also gives us cost basis of sold shares)
+            const fifoResult = calculateFIFORealizedGains(asset.transactions, tempCurrentPrice);
+            const realizedGains = fifoResult.totalRealizedGain;
+            const realizedGainsPerTransaction = fifoResult.perTransaction;
+            
+            // Calculate cost basis of sold shares (from FIFO matched lots)
+            const costBasisOfSoldShares = realizedGainsPerTransaction.reduce((sum, txGain) => {
+                return sum + txGain.matchedLots.reduce((lotSum, lot) => {
+                    return lotSum + (lot.quantity * lot.buyPrice);
+                }, 0);
+            }, 0);
+            
+            // Total realized (proceeds from SELL transactions) - for display only
+            const totalRealized = sellTransactions.reduce((s, t) => s + (t.quantity * t.price), 0);
+            
+            // ✅ GOLDEN RULE: Invested = cost of UN-SOLD buy lots only
+            // Use the remaining buy lots from FIFO to calculate cost of current holdings
+            const remainingBuyLots = fifoResult.buyQueue;
+            const currentHoldingsCost = remainingBuyLots.reduce((sum, lot) => sum + (lot.remainingQty * lot.price), 0);
+            
+            // ✅ MUST-FIX: Clamp negative holdings to zero (fully sold assets)
+            const isFullySold = totalQty <= 0;
+            const clampedQty = Math.max(0, totalQty);
+            
+            // For fully sold assets: Invested = 0, Market Value = 0, Unrealized = 0
+            const invested = isFullySold ? 0 : currentHoldingsCost; // Cost of capital still deployed (open positions only)
+            
+            // Average buy price for CURRENT HOLDINGS ONLY
+            const avgPrice = clampedQty > 0 ? currentHoldingsCost / clampedQty : 0;
 
-            const absReturn = currentValue - investedValue;
-            const absReturnPercent = investedValue > 0 ? (absReturn / investedValue) * 100 : 0;
+            // ✅ GOLDEN RULE: Current value = remaining_qty × current_LTP
+            const currentPrice = marketData?.price || avgPrice;
+            // ✅ MUST-FIX: Clamp market value to zero for fully sold assets
+            const currentValue = isFullySold ? 0 : (clampedQty * currentPrice); // Current holdings value only
+
+            // ✅ GOLDEN RULE: Unrealized P&L = current_value - invested
+            // ✅ MUST-FIX: Unrealized = 0 for fully sold assets
+            const unrealizedGains = isFullySold ? 0 : (currentValue - invested);
+
+            // ✅ MUST-FIX: Total P&L = Realized only for fully sold assets
+            // For open positions: Total P&L = Realized + Unrealized
+            const totalPnL = isFullySold ? realizedGains : (realizedGains + unrealizedGains);
+
+            // Calculate capital gains (realized and unrealized separately)
+            const realizedCapitalGains = calculateRealizedCapitalGains(asset.transactions);
+            const unrealizedCapitalGains = calculateUnrealizedCapitalGains(
+                fifoResult.buyQueue,
+                currentPrice
+            );
+
+            // Combined capital gains for backward compatibility
+            const capitalGains = {
+                stcg: Math.max(0, realizedCapitalGains.realizedStcg + unrealizedCapitalGains.unrealizedStcg),
+                ltcg: Math.max(0, realizedCapitalGains.realizedLtcg + unrealizedCapitalGains.unrealizedLtcg),
+                // New: Separate realized and unrealized
+                realized: {
+                    stcg: realizedCapitalGains.realizedStcg,
+                    ltcg: realizedCapitalGains.realizedLtcg
+                },
+                unrealized: {
+                    stcg: unrealizedCapitalGains.unrealizedStcg,
+                    ltcg: unrealizedCapitalGains.unrealizedLtcg
+                }
+            };
+
+            const totalDividends = (asset.dividends || []).reduce((s, d) => s + d.amount, 0);
+
+            const absReturn = totalPnL; // Total P&L (realized + unrealized)
+            // Return percentage based on invested (current holdings cost basis)
+            const absReturnPercent = invested > 0 ? (absReturn / invested) * 100 : 0;
 
             const dayChangePercent = marketData?.changePercent || 0;
             const dayChange = (dayChangePercent / 100) * currentValue;
 
-            // Calculate XIRR - pass asset with calculated values
-            const assetWithValues = {
-                ...asset,
-                totalQty,
-                avgPrice,
-                currentPrice,
-                currentValue
-            };
-            const xirr = calculateXIRR(assetWithValues, marketPrices);
-
-            // Calculate Capital Gains
-            const capitalGains = calculateCapitalGains(assetWithValues, marketPrices);
+            // ✅ GOLDEN RULE: Asset XIRR - Valid only if asset has remaining quantity
+            // If fully sold: Freeze XIRR or hide it
+            let xirr = null;
+            if (totalQty > 0) {
+                // Calculate XIRR only for assets with remaining quantity
+                const assetWithValues = {
+                    ...asset,
+                    totalQty,
+                    avgPrice,
+                    currentPrice,
+                    currentValue,
+                    realizedGains,
+                    unrealizedGains
+                };
+                xirr = calculateXIRR(assetWithValues, marketPrices);
+            }
+            // If totalQty === 0, xirr remains null (asset is fully exited)
 
             return {
                 ...asset,
-                totalQty,
+                totalQty: clampedQty, // ✅ Clamped to zero for fully sold
                 avgPrice,
                 currentPrice,
-                currentValue,
-                investedValue,
-                absReturn,
+                currentValue, // ✅ Clamped to zero for fully sold
+                investedValue: invested, // ✅ Cost of UN-SOLD buy lots only (open positions), 0 for fully sold
+                totalRealized, // Total realized from sells (exit proceeds)
+                realizedGains, // Realized P&L (FIFO)
+                unrealizedGains, // ✅ Unrealized P&L (0 for fully sold)
+                totalPnL, // ✅ Total P&L (Realized only for fully sold)
+                absReturn: totalPnL, // Same as totalPnL
                 absReturnPercent,
-                dayChange,
-                dayChangePercent,
+                dayChange: isFullySold ? 0 : dayChange, // ✅ No day change for fully sold
+                dayChangePercent: isFullySold ? 0 : dayChangePercent,
                 totalDividends,
-                xirr,
-                capitalGains
+                xirr, // ✅ Already null for fully sold
+                capitalGains,
+                realizedGainsPerTransaction, // Per-transaction realized gains
+                buyQty, // Total buy quantity
+                sellQty, // Total sell quantity
+                isFullySold // ✅ Flag for UI to handle closed positions
             };
         });
     }, [portfolio, marketPrices]);
 
     /**
-     * Filter portfolio based on active accounts, active asset types, selected view, and search
+     * Filter portfolio based on active accounts, active asset types, selected view, search, and fully sold assets toggle
      */
     const filteredPortfolio = useMemo(() => {
         return processedPortfolio.filter(p => {
@@ -241,9 +341,11 @@ const App = () => {
             const matchesSearch = p.symbol.toLowerCase().includes(tableFilter.toLowerCase()) ||
                                 (p.name && p.name.toLowerCase().includes(tableFilter.toLowerCase())) ||
                                 p.account.toLowerCase().includes(tableFilter.toLowerCase());
-            return matchesAccount && matchesType && matchesSearch;
+            // Phase 5: Filter out fully sold assets if toggle is off (default: hide fully sold)
+            const matchesFullySold = showFullySoldAssets || (p.totalQty && p.totalQty > 0);
+            return matchesAccount && matchesType && matchesSearch && matchesFullySold;
         });
-    }, [processedPortfolio, activeAccounts, activeAssetTypes, selectedView, tableFilter]);
+    }, [processedPortfolio, activeAccounts, activeAssetTypes, selectedView, tableFilter, showFullySoldAssets]);
 
     /**
      * Group portfolio by asset type for "ALL" view
@@ -266,27 +368,59 @@ const App = () => {
      * Calculate comprehensive portfolio statistics
      */
     const stats = useMemo(() => {
-        const invested = filteredPortfolio.reduce((s, p) => s + p.investedValue, 0);
-        const current = filteredPortfolio.reduce((s, p) => s + p.currentValue, 0);
-        const dayChange = filteredPortfolio.reduce((s, p) => s + p.dayChange, 0);
-        const absReturn = current - invested;
+        // ✅ GOLDEN RULE: Portfolio totals = ONLY what you currently own (open positions only)
+        // Only sum assets with remaining quantity > 0
+        const openPositions = filteredPortfolio.filter(p => (p.totalQty || 0) > 0);
+        
+        // ✅ Portfolio Invested = Σ invested (open positions only)
+        const invested = openPositions.reduce((s, p) => s + (p.investedValue || 0), 0);
+        
+        // ✅ Portfolio Current Value = Σ current_value (open positions only)
+        const current = openPositions.reduce((s, p) => s + (p.currentValue || 0), 0);
+        
+        // ✅ Portfolio Unrealized = portfolio_value - portfolio_invested
+        const totalUnrealizedGains = current - invested;
+        
+        // ✅ Portfolio Realized = Σ realized_pnl (all SELLs) - sum from ALL assets, not just open positions
+        const totalRealizedGains = filteredPortfolio.reduce((s, p) => s + (p.realizedGains || 0), 0);
+        
+        // ✅ Net Worth (Option A) = portfolio_value (realized gains already out of market, not counted)
+        const netWorth = current;
+        
+        const dayChange = openPositions.reduce((sum, p) => sum + (p.dayChange || 0), 0);
+        
+        // ✅ MUST-FIX: Total P&L in portfolio summary = only unrealized gains (from open positions)
+        // Realized gains are shown separately in "Activity" section
+        // This follows the golden rule: portfolio totals = only what you currently own
+        const totalPnL = totalUnrealizedGains; // Only unrealized (from open positions)
+        
+        const absReturn = totalPnL; // Total P&L (unrealized only, from open positions)
         const absReturnPct = invested > 0 ? (absReturn / invested) * 100 : 0;
         const dayChangePct = (current - dayChange) > 0 ? (dayChange / (current - dayChange)) * 100 : 0;
-        const totalDividends = filteredPortfolio.reduce((s, p) => s + (p.totalDividends || 0), 0);
-        const totalSTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.stcg || 0), 0);
-        const totalLTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.ltcg || 0), 0);
+        // Total dividends from open positions only
+        const totalDividends = openPositions.reduce((s, p) => s + (p.totalDividends || 0), 0);
+        
+        // Capital gains - use realized and unrealized separately
+        const totalRealizedSTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.realized?.stcg || 0), 0);
+        const totalRealizedLTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.realized?.ltcg || 0), 0);
+        const totalUnrealizedSTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.unrealized?.stcg || 0), 0);
+        const totalUnrealizedLTCG = filteredPortfolio.reduce((s, p) => s + (p.capitalGains?.unrealized?.ltcg || 0), 0);
+        
+        // Backward compatibility - total STCG/LTCG
+        const totalSTCG = totalRealizedSTCG + totalUnrealizedSTCG;
+        const totalLTCG = totalRealizedLTCG + totalUnrealizedLTCG;
 
-        // Type allocation for pie chart - Use filteredPortfolio to respect wallet and asset type filters
+        // ✅ Type allocation for pie chart - Use open positions only
         const typeAllocation = [
-            { name: 'Equities', value: filteredPortfolio.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'Mutual Funds', value: filteredPortfolio.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'ETFs', value: filteredPortfolio.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
+            { name: 'Equities', value: openPositions.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'Mutual Funds', value: openPositions.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'ETFs', value: openPositions.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
         ].filter(x => x.value > 0);
 
-        // Wallet allocation
+        // ✅ Wallet allocation - Use open positions only
         const walletAllocation = activeAccounts.map(acc => ({
             name: acc,
-            value: filteredPortfolio.filter(p => p.account === acc).reduce((s,p) => s+p.currentValue, 0)
+            value: openPositions.filter(p => p.account === acc).reduce((s,p) => s+p.currentValue, 0)
         })).filter(x => x.value > 0);
 
         // Sector-wise exposure
@@ -299,7 +433,8 @@ const App = () => {
         const topGainer = [...filteredPortfolio].sort((a,b) => b.absReturnPercent - a.absReturnPercent)[0];
         const topLoser = [...filteredPortfolio].sort((a,b) => a.absReturnPercent - b.absReturnPercent)[0];
 
-        // Calculate Portfolio XIRR
+        // ✅ GOLDEN RULE: Portfolio XIRR - Use actual cashflows
+        // BUY → negative, SELL → positive, Current value → final positive (virtual)
         let portfolioXIRR = null;
         let oldestTransactionDate = null;
 
@@ -309,8 +444,13 @@ const App = () => {
                 asset.transactions.forEach(tx => {
                     const date = new Date(tx.date);
                     if (!isNaN(date.getTime())) {
+                        const txType = tx.type || 'BUY';
+                        // BUY → negative (outflow), SELL → positive (inflow)
+                        const amount = txType === 'BUY' 
+                            ? -(tx.quantity * tx.price)  // Outflow
+                            : (tx.quantity * tx.price);  // Inflow
                         allTransactions.push({
-                            amount: -(tx.quantity * tx.price),
+                            amount,
                             when: date
                         });
                         if (!oldestTransactionDate || date < oldestTransactionDate) {
@@ -320,9 +460,10 @@ const App = () => {
                 });
             });
 
+            // Current value → final positive (virtual inflow)
             if (allTransactions.length > 0 && current > 0) {
                 allTransactions.push({
-                    amount: current,
+                    amount: current, // Final positive (virtual)
                     when: new Date()
                 });
 
@@ -343,8 +484,8 @@ const App = () => {
         }
 
         return {
-            invested,
-            current,
+            invested, // ✅ Portfolio Invested (open positions only)
+            current: netWorth, // ✅ Net Worth = portfolio_value (Option A)
             dayChange,
             dayChangePct,
             absReturn,
@@ -352,6 +493,15 @@ const App = () => {
             totalDividends,
             totalSTCG,
             totalLTCG,
+            // ✅ Realized and unrealized gains (separated)
+            realizedGains: totalRealizedGains, // From all SELLs
+            unrealizedGains: totalUnrealizedGains, // portfolio_value - portfolio_invested
+            totalPnL,
+            // Capital gains breakdown
+            realizedSTCG: totalRealizedSTCG,
+            realizedLTCG: totalRealizedLTCG,
+            unrealizedSTCG: totalUnrealizedSTCG,
+            unrealizedLTCG: totalUnrealizedLTCG,
             typeAllocation,
             walletAllocation,
             sectorExposure,
@@ -375,13 +525,15 @@ const App = () => {
         const monthsToShow = 120; // Generate all months (10 years max)
         const data = [];
 
-        // Filter portfolio by active accounts, active asset types, and selected view
-        const portfolioToUse = portfolio.filter(asset => {
+        // ✅ Filter portfolio by active accounts, active asset types, and selected view
+        // Only include assets with open positions (totalQty > 0)
+        const portfolioToUse = processedPortfolio.filter(asset => {
             const matchesAccount = activeAccounts.includes(asset.account);
             const matchesType = selectedView === 'ALL' 
                 ? activeAssetTypes.includes(asset.type) 
                 : asset.type === selectedView;
-            return matchesAccount && matchesType;
+            const hasOpenPosition = (asset.totalQty || 0) > 0;
+            return matchesAccount && matchesType && hasOpenPosition;
         });
 
         for (let i = monthsToShow - 1; i >= 0; i--) {
@@ -393,7 +545,29 @@ const App = () => {
                     const txDate = new Date(tx.date);
                     if (txDate.getFullYear() === targetMonth.getFullYear() &&
                         txDate.getMonth() === targetMonth.getMonth()) {
-                        return s + (tx.quantity * tx.price);
+                        const txType = tx.type || 'BUY';
+                        // BUY transactions add to investment
+                        if (txType === 'BUY') {
+                            return s + (tx.quantity * tx.price);
+                        }
+                        // SELL transactions: We need to calculate cost basis, but for monthly chart
+                        // we'll use a simplified approach - subtract based on average buy price
+                        // This is an approximation for the chart
+                        else if (txType === 'SELL') {
+                            // Calculate average buy price up to this point
+                            const buyTxsBeforeSell = asset.transactions
+                                .filter(t => (t.type || 'BUY') === 'BUY' && new Date(t.date) <= txDate)
+                                .reduce((acc, t) => {
+                                    acc.totalQty += t.quantity;
+                                    acc.totalCost += t.quantity * t.price;
+                                    return acc;
+                                }, { totalQty: 0, totalCost: 0 });
+                            const avgBuyPrice = buyTxsBeforeSell.totalQty > 0 
+                                ? buyTxsBeforeSell.totalCost / buyTxsBeforeSell.totalQty 
+                                : 0;
+                            // Subtract cost basis, not proceeds
+                            return s - (tx.quantity * avgBuyPrice);
+                        }
                     }
                     return s;
                 }, 0);
@@ -408,7 +582,7 @@ const App = () => {
         }
 
         return data.length > 0 ? data : [{ month: 'No data', invested: 0 }];
-    }, [portfolio, activeAccounts, activeAssetTypes, selectedView]);
+    }, [processedPortfolio, activeAccounts, activeAssetTypes, selectedView]);
 
     // ========================================================================
     // COMPUTED VALUES - Portfolio Insights
@@ -517,12 +691,13 @@ const App = () => {
             });
         }
 
-        // Asset Allocation Insight - Use filteredPortfolio to respect wallet and asset type filters
-        const filteredTotalValue = filteredPortfolio.reduce((s, p) => s + p.currentValue, 0);
+        // ✅ Asset Allocation Insight - Use open positions only
+        const openPositionsForInsights = filteredPortfolio.filter(p => (p.totalQty || 0) > 0);
+        const filteredTotalValue = openPositionsForInsights.reduce((s, p) => s + p.currentValue, 0);
         if (filteredTotalValue > 0) {
-            const equity = filteredPortfolio.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
-            const mf = filteredPortfolio.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
-            const etf = filteredPortfolio.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
+            const equity = openPositionsForInsights.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
+            const mf = openPositionsForInsights.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
+            const etf = openPositionsForInsights.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
 
             const equityPercent = (equity / filteredTotalValue) * 100;
             const mfPercent = (mf / filteredTotalValue) * 100;
@@ -956,6 +1131,8 @@ const App = () => {
                         setActiveAccounts={setActiveAccounts}
                         activeAssetTypes={activeAssetTypes}
                         setActiveAssetTypes={setActiveAssetTypes}
+                        showFullySoldAssets={showFullySoldAssets}
+                        setShowFullySoldAssets={setShowFullySoldAssets}
                     />
                 );
         }

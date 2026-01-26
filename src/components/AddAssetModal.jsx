@@ -7,6 +7,7 @@ import {
     Loader2,
     Building2,
     TrendingUp,
+    TrendingDown,
     ChevronDown,
     Check,
     Wallet,
@@ -77,6 +78,7 @@ const AddAssetModal = ({
     // Form state
     const [selectedAssetType, setSelectedAssetType] = useState('STOCK');
     const [selectedAssetName, setSelectedAssetName] = useState('');
+    const [transactionType, setTransactionType] = useState('BUY'); // BUY or SELL
     const [buyPrice, setBuyPrice] = useState('');
     const [quantity, setQuantity] = useState('');
     const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0]);
@@ -183,6 +185,7 @@ const AddAssetModal = ({
             account: selectedAccount,
             sector: sector || '',
             transaction: {
+                type: transactionType, // BUY or SELL
                 price: parseFloat(buyPrice),
                 quantity: parseFloat(quantity),
                 date: buyDate,
@@ -203,6 +206,7 @@ const AddAssetModal = ({
         setAddStatus('idle');
         setSearchQuery('');
         setSelectedAssetName('');
+        setTransactionType('BUY');
         setBuyPrice('');
         setQuantity('');
         setPreviewPrice(null);
@@ -445,6 +449,54 @@ const AddAssetModal = ({
                         )}
                     </div>
 
+                    {/* Transaction Type Selector */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide">
+                            Transaction Type
+                        </label>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setTransactionType('BUY')}
+                                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all active:scale-95 ${
+                                    transactionType === 'BUY'
+                                        ? 'bg-teal-500 text-white shadow-md'
+                                        : isDarkMode 
+                                            ? 'bg-slate-800 text-slate-400 border border-slate-700' 
+                                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                }`}
+                            >
+                                <div className="flex items-center justify-center gap-1.5">
+                                    <TrendingUp size={14} />
+                                    Buy
+                                </div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTransactionType('SELL')}
+                                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all active:scale-95 ${
+                                    transactionType === 'SELL'
+                                        ? 'bg-rose-500 text-white shadow-md'
+                                        : isDarkMode 
+                                            ? 'bg-slate-800 text-slate-400 border border-slate-700' 
+                                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                }`}
+                            >
+                                <div className="flex items-center justify-center gap-1.5">
+                                    <TrendingDown size={14} />
+                                    Sell
+                                </div>
+                            </button>
+                        </div>
+                        {transactionType === 'SELL' && (
+                            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-2.5 mt-2">
+                                <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                    Note: Make sure you have sufficient holdings. Holdings will be checked when you add the transaction.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Quantity & Price Grid */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
@@ -467,7 +519,7 @@ const AddAssetModal = ({
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                                <IndianRupee size={12} /> Buy Price
+                                <IndianRupee size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Buy'} Price
                             </label>
                             <input
                                 type="number"
@@ -488,7 +540,7 @@ const AddAssetModal = ({
                     {/* Date */}
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                            <Calendar size={12} /> Purchase Date
+                            <Calendar size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Purchase'} Date
                         </label>
                         <input
                             type="date"

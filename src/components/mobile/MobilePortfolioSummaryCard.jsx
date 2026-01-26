@@ -33,32 +33,33 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                     />
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
+                    {/* ✅ MUST-FIX: Show only unrealized gains (from open positions) in hero section */}
                     <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${
-                        (stats.absReturn || 0) >= 0
+                        (stats.unrealizedGains || 0) >= 0
                             ? 'bg-emerald-400/20 border border-emerald-400/30'
                             : 'bg-rose-400/20 border border-rose-400/30'
                     }`}>
-                        {(stats.absReturn || 0) >= 0 ? (
+                        {(stats.unrealizedGains || 0) >= 0 ? (
                             <TrendingUp size={14} className="text-emerald-300" />
                         ) : (
                             <TrendingDown size={14} className="text-rose-300" />
                         )}
                         <span className={`text-xs font-black ${
-                            (stats.absReturn || 0) >= 0 ? 'text-emerald-200' : 'text-rose-200'
+                            (stats.unrealizedGains || 0) >= 0 ? 'text-emerald-200' : 'text-rose-200'
                         }`}>
                             <AnimatedNumber 
-                                value={stats.absReturn || 0} 
+                                value={stats.unrealizedGains || 0} 
                                 format="currency" 
                                 duration={800}
                             />
                         </span>
                     </div>
                     <span className={`text-sm font-black ${
-                        (stats.absReturnPct || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        (stats.unrealizedGains || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
                     }`}>
-                        {(stats.absReturnPct || 0) >= 0 ? '↑' : '↓'} 
+                        {(stats.unrealizedGains || 0) >= 0 ? '↑' : '↓'} 
                         <AnimatedNumber 
-                            value={Math.abs(stats.absReturnPct || 0)} 
+                            value={Math.abs((stats.invested || 0) > 0 ? ((stats.unrealizedGains || 0) / stats.invested * 100) : 0)} 
                             format="number" 
                             duration={800}
                         />%
@@ -66,13 +67,13 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                 </div>
             </div>
 
-            {/* Stats Grid - 2x2 layout */}
-            <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-black text-white/50 uppercase mb-1 tracking-wide">
+            {/* ✅ Layer 1: Portfolio Health (Hero) - Core metrics */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-white/10 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                    <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
                         Invested
                     </p>
-                    <p className="text-sm font-black truncate">
+                    <p className="text-xs font-black break-words leading-tight">
                         <AnimatedNumber 
                             value={stats.invested || 0} 
                             format="currency" 
@@ -81,26 +82,27 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                         />
                     </p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-black text-white/50 uppercase mb-1 tracking-wide">
-                        Today
+                <div className="bg-white/10 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                    <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
+                        Unrealized
                     </p>
-                    <p className="text-sm font-black truncate">
-                        {(stats.dayChange || 0) >= 0 ? '+' : ''}
+                    <p className={`text-xs font-black break-words leading-tight ${
+                        (stats.unrealizedGains || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                    }`}>
+                        {(stats.unrealizedGains || 0) >= 0 ? '+' : ''}
                         <AnimatedNumber 
-                            value={stats.dayChange || 0} 
+                            value={stats.unrealizedGains || 0} 
                             format="currency" 
                             duration={800}
-                            className={(stats.dayChange || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}
                         />
                     </p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-black text-white/50 uppercase mb-1 tracking-wide">
+                <div className="bg-white/10 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                    <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
                         XIRR
                     </p>
                     {stats.portfolioXIRR !== null && stats.portfolioXIRR !== undefined ? (
-                        <p className="text-sm font-black">
+                        <p className="text-xs font-black break-words leading-tight">
                             {stats.portfolioXIRR >= 0 ? '+' : ''}
                             <AnimatedNumber 
                                 value={stats.portfolioXIRR} 
@@ -111,20 +113,56 @@ const MobilePortfolioSummaryCard = ({ stats }) => {
                             />
                         </p>
                     ) : (
-                        <p className="text-sm font-bold text-white/40">—</p>
+                        <p className="text-xs font-bold text-white/40">—</p>
                     )}
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-black text-white/50 uppercase mb-1 tracking-wide">
-                        Dividends
+                <div className="bg-white/10 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                    <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
+                        Today
                     </p>
-                    <p className="text-sm font-black text-emerald-300 truncate">
-                        +<AnimatedNumber 
-                            value={stats.totalDividends || 0} 
+                    <p className="text-xs font-black break-words leading-tight">
+                        {(stats.dayChange || 0) >= 0 ? '+' : ''}
+                        <AnimatedNumber 
+                            value={stats.dayChange || 0} 
                             format="currency" 
                             duration={800}
+                            className={(stats.dayChange || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}
                         />
                     </p>
+                </div>
+            </div>
+
+            {/* ✅ Layer 2: Portfolio Activity (Secondary) - What has happened */}
+            <div className="pt-3 border-t border-white/10">
+                <p className="text-[7px] font-black text-white/40 uppercase mb-2 tracking-wide">Activity</p>
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                        <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
+                            Realized
+                        </p>
+                        <p className={`text-xs font-black break-words leading-tight ${
+                            (stats.realizedGains || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        }`}>
+                            {(stats.realizedGains || 0) >= 0 ? '+' : ''}
+                            <AnimatedNumber 
+                                value={stats.realizedGains || 0} 
+                                format="currency" 
+                                duration={800}
+                            />
+                        </p>
+                    </div>
+                    <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/5">
+                        <p className="text-[7px] font-black text-white/50 uppercase mb-1 tracking-wide">
+                            Dividends
+                        </p>
+                        <p className="text-xs font-black text-emerald-300 break-words leading-tight">
+                            +<AnimatedNumber 
+                                value={stats.totalDividends || 0} 
+                                format="currency" 
+                                duration={800}
+                            />
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

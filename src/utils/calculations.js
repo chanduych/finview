@@ -98,6 +98,7 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
         }
 
         // Build transaction list with proper dates
+        // BUY transactions are outflows (negative), SELL transactions are inflows (positive)
         const transactions = asset.transactions
             .filter(t => {
                 if (!t.date || t.quantity <= 0 || t.price <= 0) {
@@ -108,8 +109,13 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
             })
             .map(t => {
                 const date = new Date(t.date);
+                const txType = t.type || 'BUY';
+                const txAmount = t.quantity * t.price;
+                
                 return {
-                    amount: -(t.quantity * t.price), // Negative for outflows (investments)
+                    amount: txType === 'BUY' 
+                        ? -txAmount  // Outflow (investment)
+                        : txAmount,  // Inflow (redemption)
                     when: date
                 };
             });
@@ -236,14 +242,22 @@ export const calculateXIRR = (asset, marketPrices = {}) => {
  * @returns {Object} Object with stcg and ltcg properties (both non-negative numbers)
  */
 export const calculateCapitalGains = (asset, marketPrices = {}) => {
+    // If asset already has capitalGains from FIFO calculation, use that
+    if (asset.capitalGains && asset.capitalGains.realized && asset.capitalGains.unrealized) {
+        return asset.capitalGains;
+    }
+
+    // Fallback to old calculation for backward compatibility
     const now = new Date();
-    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
     let stcg = 0, ltcg = 0;
 
-    asset.transactions.forEach(tx => {
+    // Only calculate for BUY transactions (unrealized gains on current holdings)
+    const buyTransactions = (asset.transactions || []).filter(tx => (tx.type || 'BUY') === 'BUY');
+    const currentPrice = marketPrices[asset.symbol]?.price || asset.avgPrice || 0;
+
+    buyTransactions.forEach(tx => {
         const txDate = new Date(tx.date);
         const holdingPeriod = (now - txDate) / (1000 * 60 * 60 * 24);
-        const currentPrice = marketPrices[asset.symbol]?.price || asset.avgPrice;
         const gain = (currentPrice - tx.price) * tx.quantity;
 
         if (holdingPeriod < 365) {

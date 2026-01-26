@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     ChevronDown, Plus, Trash2,
     TrendingUp, TrendingDown, ShieldAlert, BarChart3, Briefcase, Layers,
-    Calendar, Clock, Coins, X, Check, AlertCircle, Edit3, Loader2
+    Calendar, Clock, Coins, X, Check, AlertCircle, Edit3, Loader2, Wallet
 } from 'lucide-react';
 import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters';
 import { useDarkModeContext } from './MobileLayout';
@@ -71,12 +71,14 @@ const MobileAssetCard = ({
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [showTransactions, setShowTransactions] = useState(true);
     const [showDividends, setShowDividends] = useState(false);
+    const [showInvestmentDetails, setShowInvestmentDetails] = useState(false); // Collapsible investment summary
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [saving, setSaving] = useState(false); // Loading state for save operations
 
     const handleAddTransaction = () => {
         const pendingTx = {
             id: `pending-${Date.now()}`,
+            type: 'BUY', // Default to BUY
             price: item.currentPrice || 0,
             quantity: '',
             date: new Date().toISOString().split('T')[0],
@@ -91,10 +93,23 @@ const MobileAssetCard = ({
         
         const quantity = parseFloat(editingTransaction.quantity) || 0;
         const price = parseFloat(editingTransaction.price) || 0;
+        // Preserve original transaction type when editing (don't allow changing type)
+        const txType = editingTransaction.isPending 
+            ? (editingTransaction.type || 'BUY') 
+            : (editingTransaction.originalType || editingTransaction.type || 'BUY');
         
         if (quantity <= 0 || price <= 0) {
             alert('Please enter valid quantity and price');
             return;
+        }
+
+        // Validate sell quantity against holdings
+        if (txType === 'SELL') {
+            const currentHoldings = item.totalQty || 0;
+            if (quantity > currentHoldings) {
+                alert(`Insufficient holdings. You only have ${currentHoldings.toLocaleString('en-IN', { maximumFractionDigits: 2 })} units.`);
+                return;
+            }
         }
 
         const txDate = new Date(editingTransaction.date);
@@ -110,6 +125,7 @@ const MobileAssetCard = ({
         try {
             const transactionData = {
                 id: editingTransaction.isPending ? Date.now() : editingTransaction.id,
+                type: txType,
                 price,
                 quantity,
                 date: editingTransaction.date
@@ -207,10 +223,20 @@ const MobileAssetCard = ({
         }
     };
 
-    // Calculate totals
-    const totalInvested = (item.transactions || []).reduce((sum, tx) => sum + (tx.price * tx.quantity), 0);
-    const totalDividends = (item.dividends || []).reduce((sum, div) => sum + div.amount, 0);
-    const dividendYield = totalInvested > 0 ? (totalDividends / totalInvested) * 100 : 0;
+    // ✅ GOLDEN RULE: Invested = cost of UN-SOLD buy lots only (open positions)
+    const invested = item.investedValue || 0; // Cost of capital still deployed (from FIFO buyQueue)
+    // Current holdings cost is the same as invested (cost of remaining lots)
+    const currentHoldingsCost = invested; // Same as invested for current holdings
+    const unrealizedGains = item.unrealizedGains || 0;
+    const isFullySold = item.isFullySold || (item.totalQty || 0) <= 0; // ✅ Check if fully sold
+    // Calculate percentage with proper error handling
+    let unrealizedGainsPercent = 0;
+    if (currentHoldingsCost > 0 && !isNaN(unrealizedGains) && isFinite(unrealizedGains)) {
+        unrealizedGainsPercent = (unrealizedGains / currentHoldingsCost) * 100;
+        if (!isFinite(unrealizedGainsPercent)) unrealizedGainsPercent = 0;
+    }
+    const totalDividends = (item.dividends || []).reduce((sum, div) => sum + (div.amount || 0), 0);
+    const dividendYield = invested > 0 ? (totalDividends / invested) * 100 : 0;
 
     return (
         <div className="bg-white dark:bg-slate-800 rounded-2xl card-shadow border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300">
@@ -288,12 +314,12 @@ const MobileAssetCard = ({
                         {pnlView === 'total' ? (
                             <>
                                 <p className="text-[13px] font-bold tabular-nums text-slate-800 dark:text-white">
-                                    ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                    ₹{(item.currentPrice || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                 </p>
                                 <p className={`text-[9px] font-semibold tabular-nums ${
-                                    (item.absReturn || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    unrealizedGains >= 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
-                                    {(item.absReturn || 0) >= 0 ? '+' : ''}{formatCurrency(item.absReturn || 0)} ({(item.absReturnPercent || 0) >= 0 ? '+' : ''}{(item.absReturnPercent || 0).toFixed(1)}%)
+                                    {unrealizedGains >= 0 ? '+' : ''}{formatCurrency(unrealizedGains)} ({unrealizedGainsPercent >= 0 ? '+' : ''}{isFinite(unrealizedGainsPercent) ? unrealizedGainsPercent.toFixed(1) : '0.0'}%)
                                 </p>
                             </>
                         ) : (
@@ -330,31 +356,175 @@ const MobileAssetCard = ({
             {isExpanded && (
                 <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-4 space-y-4 animate-fade-slide-in">
                     
-                    {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Invested</p>
-                            <p className="text-sm font-black text-slate-800 dark:text-white tabular-nums">
-                                {formatCurrency(totalInvested)}
-                            </p>
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Current</p>
-                            <p className="text-sm font-black text-teal-600 tabular-nums">
-                                {formatCurrency(item.currentValue)}
-                            </p>
-                        </div>
-                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">XIRR</p>
-                            {item.xirr !== null && item.xirr !== undefined ? (
-                                <p className={`text-sm font-black tabular-nums ${item.xirr >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                    {item.xirr >= 0 ? '+' : ''}{item.xirr.toFixed(1)}%
-                                </p>
-                            ) : (
-                                <p className="text-sm font-bold text-slate-400">N/A</p>
-                            )}
-                        </div>
+                    {/* Investment Summary - Collapsible Single Section */}
+                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        {/* Collapsible Header */}
+                        <button
+                            onClick={() => setShowInvestmentDetails(!showInvestmentDetails)}
+                            className="w-full px-4 py-3 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Wallet size={14} className="text-indigo-500" />
+                                <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase">
+                                    Investment Details
+                                </span>
+                            </div>
+                            <ChevronDown size={16} className={`text-slate-400 transition-transform ${showInvestmentDetails ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showInvestmentDetails && (
+                            <div className="p-4 space-y-3">
+                                {/* Section 1: Total Investment Overview */}
+                                <div>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-2">Total Investment</p>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Invested</span>
+                                            <span className="text-sm font-black text-slate-800 dark:text-white tabular-nums">
+                                                {formatCurrency(invested)}
+                                            </span>
+                                        </div>
+                                        {(item.totalRealized || 0) > 0 && (
+                                            <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Sold Proceeds</span>
+                                                <span className="text-sm font-black text-slate-600 dark:text-slate-300 tabular-nums">
+                                                    {formatCurrency(item.totalRealized || 0)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {/* Section 2: Current Holdings (Open) or Exit Details (Closed) */}
+                                {isFullySold ? (
+                                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-2">Exit Details</p>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Exit Proceeds</span>
+                                                <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">
+                                                    {formatCurrency(item.totalRealized || 0)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-2">Current Holdings</p>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Cost Basis</span>
+                                                <span className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums">
+                                                    {formatCurrency(invested)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Market Value</span>
+                                                <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">
+                                                    {formatCurrency(item.currentValue || 0)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Unrealized P&L</span>
+                                                <span className={`text-sm font-black tabular-nums ${
+                                                    (item.unrealizedGains || 0) >= 0 
+                                                        ? 'text-emerald-600 dark:text-emerald-400' 
+                                                        : 'text-rose-600 dark:text-rose-400'
+                                                }`}>
+                                                    {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.unrealizedGains || 0)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section 3: P&L Summary */}
+                                <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-2">Profit & Loss</p>
+                                    {isFullySold ? (
+                                        // ✅ MUST-FIX: For fully sold assets, show only Realized P&L
+                                        <div className={`p-2.5 rounded-lg ${
+                                            (item.realizedGains || 0) >= 0 
+                                                ? 'bg-emerald-50 dark:bg-emerald-900/20' 
+                                                : 'bg-rose-50 dark:bg-rose-900/20'
+                                        }`}>
+                                            <p className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Realized P&L</p>
+                                            <p className={`text-sm font-black tabular-nums ${
+                                                (item.realizedGains || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                            }`}>
+                                                {(item.realizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.realizedGains || 0)}
+                                            </p>
+                                            <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">From exit</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className={`p-2.5 rounded-lg ${
+                                                    (item.realizedGains || 0) >= 0 
+                                                        ? 'bg-emerald-50 dark:bg-emerald-900/20' 
+                                                        : 'bg-rose-50 dark:bg-rose-900/20'
+                                                }`}>
+                                                    <p className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Realized</p>
+                                                    <p className={`text-sm font-black tabular-nums ${
+                                                        (item.realizedGains || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                                    }`}>
+                                                        {(item.realizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.realizedGains || 0)}
+                                                    </p>
+                                                    <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">From sells</p>
+                                                </div>
+                                                <div className={`p-2.5 rounded-lg ${
+                                                    (item.unrealizedGains || 0) >= 0 
+                                                        ? 'bg-emerald-50 dark:bg-emerald-900/20' 
+                                                        : 'bg-rose-50 dark:bg-rose-900/20'
+                                                }`}>
+                                                    <p className="text-[8px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Unrealized</p>
+                                                    <p className={`text-sm font-black tabular-nums ${
+                                                        (item.unrealizedGains || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                                    }`}>
+                                                        {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.unrealizedGains || 0)}
+                                                    </p>
+                                                    <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">On holdings</p>
+                                                </div>
+                                            </div>
+                                            {/* Total P&L */}
+                                            <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">Total P&L</span>
+                                                    <span className={`text-base font-black tabular-nums ${
+                                                        (item.absReturn || 0) >= 0 
+                                                            ? 'text-emerald-600 dark:text-emerald-400' 
+                                                            : 'text-rose-600 dark:text-rose-400'
+                                                    }`}>
+                                                        {(item.absReturn || 0) >= 0 ? '+' : ''}{formatCurrency(item.absReturn || 0)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Section 4: Performance Metrics */}
+                                <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2">
+                                    <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">XIRR</p>
+                                        {item.xirr !== null && item.xirr !== undefined ? (
+                                            <p className={`text-sm font-black tabular-nums ${item.xirr >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                {item.xirr >= 0 ? '+' : ''}{item.xirr.toFixed(1)}%
+                                            </p>
+                                        ) : (
+                                            <p className="text-sm font-bold text-slate-400">N/A</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Return %</p>
+                                        <p className={`text-sm font-black tabular-nums ${(item.absReturnPercent || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                            {(item.absReturnPercent || 0) >= 0 ? '+' : ''}{(item.absReturnPercent || 0).toFixed(1)}%
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Transactions Section */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -392,6 +562,61 @@ const MobileAssetCard = ({
                                             <Plus size={14} className="text-teal-600" />
                                             <span className="text-xs font-black text-teal-700 uppercase">New Transaction</span>
                                         </div>
+                                        
+                                        {/* Transaction Type Selector */}
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">
+                                                Transaction Type *
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        setEditingTransaction({ ...editingTransaction, type: 'BUY' });
+                                                    }}
+                                                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 min-h-[44px] ${
+                                                        (editingTransaction.type || 'BUY') === 'BUY'
+                                                            ? 'bg-teal-500 text-white shadow-lg'
+                                                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-300 dark:border-slate-700 hover:border-teal-400'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <TrendingUp size={14} />
+                                                        <span>Buy</span>
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        setEditingTransaction({ ...editingTransaction, type: 'SELL' });
+                                                    }}
+                                                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 min-h-[44px] ${
+                                                        editingTransaction.type === 'SELL'
+                                                            ? 'bg-rose-500 text-white shadow-lg'
+                                                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-300 dark:border-slate-700 hover:border-rose-400'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <TrendingDown size={14} />
+                                                        <span>Sell</span>
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Show holdings warning for sells */}
+                                        {editingTransaction.type === 'SELL' && (
+                                            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-2">
+                                                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                                                    Current Holdings: <span className="font-black">{item.totalQty?.toLocaleString('en-IN', { maximumFractionDigits: 2 }) || 0}</span> units
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <input
                                             type="date"
                                             value={editingTransaction.date}
@@ -422,13 +647,29 @@ const MobileAssetCard = ({
                                         </div>
                                         {/* Preview */}
                                         {editingTransaction.quantity && editingTransaction.price && (
-                                            <div className="bg-white dark:bg-slate-800 rounded-lg p-2 text-center">
-                                                <span className="text-xs text-slate-500">Total: </span>
-                                                <span className="text-sm font-black text-slate-800 dark:text-white">
-                                                    {formatCurrency((parseFloat(editingTransaction.quantity) || 0) * (parseFloat(editingTransaction.price) || 0))}
-                                                </span>
-                                    </div>
-                                )}
+                                            <div className="bg-white dark:bg-slate-800 rounded-lg p-2.5 space-y-1">
+                                                <div className="text-center">
+                                                    <span className="text-xs text-slate-500">Total Value: </span>
+                                                    <span className="text-sm font-black text-slate-800 dark:text-white">
+                                                        {formatCurrency((parseFloat(editingTransaction.quantity) || 0) * (parseFloat(editingTransaction.price) || 0))}
+                                                    </span>
+                                                </div>
+                                                {/* Show realized P&L preview for sells */}
+                                                {editingTransaction.type === 'SELL' && item.avgPrice && (
+                                                    <div className="text-center pt-1 border-t border-slate-200 dark:border-slate-700">
+                                                        <span className="text-xs text-slate-500">Est. Realized P&L: </span>
+                                                        <span className={`text-xs font-black ${
+                                                            ((parseFloat(editingTransaction.price) - item.avgPrice) * (parseFloat(editingTransaction.quantity) || 0)) >= 0
+                                                                ? 'text-emerald-600 dark:text-emerald-400'
+                                                                : 'text-rose-600 dark:text-rose-400'
+                                                        }`}>
+                                                            {((parseFloat(editingTransaction.price) - item.avgPrice) * (parseFloat(editingTransaction.quantity) || 0)) >= 0 ? '+' : ''}
+                                                            {formatCurrency((parseFloat(editingTransaction.price) - item.avgPrice) * (parseFloat(editingTransaction.quantity) || 0))}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                         <div className="flex gap-2">
                                             <button 
                                                 onClick={handleSaveTransaction} 
@@ -472,9 +713,23 @@ const MobileAssetCard = ({
                                             {[...item.transactions]
                                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                                                 .map((tx, index) => {
-                                    const txPnl = (item.currentPrice - tx.price) * tx.quantity;
-                                    const txPnlPercent = tx.price > 0 ? ((item.currentPrice - tx.price) / tx.price) * 100 : 0;
-                                                    const daysHeld = getDaysHeld(tx.date);
+                                    const txType = tx.type || 'BUY';
+                                    const isSell = txType === 'SELL';
+                                    
+                                    // For BUY: unrealized P&L, For SELL: realized P&L
+                                    let txPnl, txPnlPercent;
+                                    if (isSell) {
+                                        // Find realized gain for this sell transaction
+                                        const realizedGainData = item.realizedGainsPerTransaction?.find(rg => rg.transaction.id === tx.id);
+                                        txPnl = realizedGainData?.realizedGain || 0;
+                                        txPnlPercent = tx.price > 0 ? ((tx.price - item.avgPrice) / item.avgPrice) * 100 : 0;
+                                    } else {
+                                        // BUY transaction - show unrealized P&L
+                                        txPnl = (item.currentPrice - tx.price) * tx.quantity;
+                                        txPnlPercent = tx.price > 0 ? ((item.currentPrice - tx.price) / tx.price) * 100 : 0;
+                                    }
+                                    
+                                    const daysHeld = getDaysHeld(tx.date);
                                                     const isLongTerm = isLTCG(tx.date, item.type);
                                                     const isEditing = editingTransaction?.id === tx.id && !editingTransaction?.isPending;
 
@@ -485,6 +740,29 @@ const MobileAssetCard = ({
                                                                     <Edit3 size={14} className="text-amber-600" />
                                                                     <span className="text-xs font-black text-amber-700 uppercase">Edit Transaction</span>
                                                                 </div>
+                                                
+                                                {/* Transaction Type Display (Read-only) */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wide">
+                                                        Transaction Type:
+                                                    </span>
+                                                    <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                                                        (tx.type || 'BUY') === 'SELL'
+                                                            ? 'bg-rose-500 text-white'
+                                                            : 'bg-teal-500 text-white'
+                                                    }`}>
+                                                        {(tx.type || 'BUY') === 'SELL' ? 'SELL' : 'BUY'}
+                                                    </span>
+                                                </div>
+
+                                                {(tx.type || 'BUY') === 'SELL' && (
+                                                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-2.5">
+                                                        <div className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                                            Current Holdings: <span className="font-black">{item.totalQty?.toLocaleString('en-IN', { maximumFractionDigits: 2 }) || 0}</span> units
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <input
                                                     type="date"
                                                     value={editingTransaction.date}
@@ -551,36 +829,68 @@ const MobileAssetCard = ({
                                     return (
                                         <div
                                             key={tx.id}
-                                            onClick={() => setEditingTransaction({ ...tx })}
+                                            onClick={() => setEditingTransaction({ ...tx, originalType: tx.type || 'BUY', type: tx.type || 'BUY' })}
                                                             className="relative flex items-start gap-3 pl-1 cursor-pointer group"
                                                         >
                                                             {/* Timeline Dot */}
                                                             <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                                                                isLongTerm 
-                                                                    ? 'bg-emerald-100 border-2 border-emerald-400' 
-                                                                    : 'bg-orange-100 border-2 border-orange-400'
+                                                                isSell
+                                                                    ? 'bg-rose-100 border-2 border-rose-400'
+                                                                    : isLongTerm 
+                                                                        ? 'bg-emerald-100 border-2 border-emerald-400' 
+                                                                        : 'bg-orange-100 border-2 border-orange-400'
                                                             }`}>
-                                                                <Calendar size={12} className={isLongTerm ? 'text-emerald-600' : 'text-orange-600'} />
+                                                                {isSell ? (
+                                                                    <TrendingDown size={12} className="text-rose-600" />
+                                                                ) : (
+                                                                    <TrendingUp size={12} className={isLongTerm ? 'text-emerald-600' : 'text-orange-600'} />
+                                                                )}
                                                             </div>
 
                                                             {/* Transaction Card */}
-                                                            <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 group-active:bg-slate-100 dark:group-active:bg-slate-700/50 transition-colors">
+                                                            <div className={`flex-1 rounded-xl p-3 group-active:opacity-80 transition-colors ${
+                                                                isSell
+                                                                    ? 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'
+                                                                    : 'bg-slate-50 dark:bg-slate-900/50'
+                                                            }`}>
                                                                 <div className="flex justify-between items-start">
                                                 <div>
-                                                                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                                                            {new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                                                        </p>
-                                                                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                                                                {new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                                            </p>
+                                                                            {isSell && (
+                                                                                <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-black rounded">
+                                                                                    SELL
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="text-[10px] text-slate-500 font-medium">
                                                                             {tx.quantity} × ₹{tx.price.toFixed(2)}
-                                                    </p>
+                                                                        </p>
                                                 </div>
                                                 <div className="text-right">
-                                                                        <p className={`text-sm font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                        {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
-                                                    </p>
-                                                                        <p className={`text-[10px] font-bold ${txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                                            {txPnlPercent >= 0 ? '+' : ''}{txPnlPercent.toFixed(1)}%
-                                                                        </p>
+                                                                        {!isSell && (
+                                                                            <>
+                                                                                <p className={`text-sm font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                    {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
+                                                                                </p>
+                                                                                <p className={`text-[10px] font-bold ${txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                                    {txPnlPercent >= 0 ? '+' : ''}{txPnlPercent.toFixed(1)}%
+                                                                                </p>
+                                                                            </>
+                                                                        )}
+                                                                        {/* ✅ MUST-FIX: SELL cards - show only realized, drop generic "+₹" */}
+                                                                        {isSell && (
+                                                                            <div>
+                                                                                <p className="text-[8px] font-bold text-rose-500 dark:text-rose-400 uppercase mb-0.5">
+                                                                                    Realized
+                                                                                </p>
+                                                                                <p className={`text-sm font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                    {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 {/* Holding Period Badge */}
@@ -611,6 +921,79 @@ const MobileAssetCard = ({
                             </div>
                         )}
                     </div>
+
+                    {/* ✅ SHOULD-FIX: Capital Gains & Tax - Moved between Transactions and Dividends */}
+                    {item.capitalGains && (
+                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <div className="p-3 space-y-2">
+                                {/* Realized Gains (from sells) */}
+                                {((item.capitalGains.realized?.stcg || 0) > 0 || (item.capitalGains.realized?.ltcg || 0) > 0) && (
+                                    <div className="space-y-1.5">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Realized Gains (Tax Paid)</p>
+                                        <div className="flex gap-2">
+                                            {/* Realized STCG */}
+                                            {(item.capitalGains.realized?.stcg || 0) > 0 && (
+                                                <div className="flex-1 bg-orange-50 dark:bg-orange-900/20 px-2.5 py-2 rounded-lg border border-orange-200 dark:border-orange-800">
+                                                    <p className="text-[8px] font-bold text-orange-400 uppercase">Short Term</p>
+                                                    <p className="text-xs font-black text-orange-600 dark:text-orange-400 tabular-nums">
+                                                        {formatCurrency(item.capitalGains.realized.stcg)}
+                                                    </p>
+                                                    <p className="text-[8px] text-orange-500 dark:text-orange-400 mt-0.5">
+                                                        Tax: {formatCurrency(item.capitalGains.realized.stcg * 0.15)}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {/* Realized LTCG */}
+                                            {(item.capitalGains.realized?.ltcg || 0) > 0 && (
+                                                <div className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                                    <p className="text-[8px] font-bold text-emerald-400 uppercase">Long Term</p>
+                                                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                                        {formatCurrency(item.capitalGains.realized.ltcg)}
+                                                    </p>
+                                                    <p className="text-[8px] text-emerald-500 dark:text-emerald-400 mt-0.5">
+                                                        ₹1.25L exempt • {formatCurrency(Math.max(0, item.capitalGains.realized.ltcg - 125000) * 0.10)}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {/* Unrealized Gains (if sold today) - Only show for open positions */}
+                                {!isFullySold && ((item.capitalGains.unrealized?.stcg || 0) > 0 || (item.capitalGains.unrealized?.ltcg || 0) > 0) && (
+                                    <div className="space-y-1.5">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Tax if Sold Today</p>
+                                        <div className="flex gap-2">
+                                            {/* Unrealized STCG */}
+                                            {(item.capitalGains.unrealized?.stcg || 0) > 0 && (
+                                                <div className="flex-1 bg-orange-50 dark:bg-orange-900/20 px-2.5 py-2 rounded-lg border border-orange-200 dark:border-orange-800">
+                                                    <p className="text-[8px] font-bold text-orange-400 uppercase">Short Term</p>
+                                                    <p className="text-xs font-black text-orange-600 dark:text-orange-400 tabular-nums">
+                                                        {formatCurrency(item.capitalGains.unrealized.stcg)}
+                                                    </p>
+                                                    <p className="text-[8px] text-orange-500 dark:text-orange-400 mt-0.5">
+                                                        Tax: {formatCurrency(item.capitalGains.unrealized.stcg * 0.15)}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {/* Unrealized LTCG */}
+                                            {(item.capitalGains.unrealized?.ltcg || 0) > 0 && (
+                                                <div className="flex-1 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                                    <p className="text-[8px] font-bold text-emerald-400 uppercase">Long Term</p>
+                                                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                                        {formatCurrency(item.capitalGains.unrealized.ltcg)}
+                                                    </p>
+                                                    <p className="text-[8px] text-emerald-500 dark:text-emerald-400 mt-0.5">
+                                                        ₹1.25L exempt • {formatCurrency(Math.max(0, item.capitalGains.unrealized.ltcg - 125000) * 0.10)}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Dividends Section */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -744,31 +1127,6 @@ const MobileAssetCard = ({
                         )}
                     </div>
 
-                    {/* Capital Gains & Tax - Compact */}
-                    {item.capitalGains && (item.capitalGains.stcg > 0 || item.capitalGains.ltcg > 0) && (
-                        <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Tax if Sold Today</p>
-                            <div className="flex gap-2">
-                                {/* STCG Card */}
-                                {item.capitalGains.stcg > 0 && (
-                                    <div className="flex-1 bg-orange-50 dark:bg-orange-900/20 px-2.5 py-2 rounded-lg border border-orange-200 dark:border-orange-800">
-                                        <p className="text-[8px] font-bold text-orange-400 uppercase">Short Term</p>
-                                        <p className="text-xs font-black text-orange-600">{formatCurrency(item.capitalGains.stcg)}</p>
-                                        <p className="text-[9px] text-orange-500">Tax: {formatCurrency(item.capitalGains.stcg * 0.20)}</p>
-                                    </div>
-                                )}
-                                {/* LTCG Card */}
-                                {item.capitalGains.ltcg > 0 && (
-                                    <div className="flex-1 bg-teal-50 dark:bg-teal-900/20 px-2.5 py-2 rounded-lg border border-teal-200 dark:border-teal-800">
-                                        <p className="text-[8px] font-bold text-teal-400 uppercase">Long Term</p>
-                                        <p className="text-xs font-black text-teal-600">{formatCurrency(item.capitalGains.ltcg)}</p>
-                                        <p className="text-[9px] text-teal-500">Tax: {formatCurrency(Math.max(0, item.capitalGains.ltcg - 125000) * 0.125)}</p>
-                                        <p className="text-[8px] text-teal-400">₹1.25L exempt • ₹{Math.max(0, 125000 - item.capitalGains.ltcg).toLocaleString('en-IN')} left</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Delete Asset - Subtle at bottom */}
                     <button

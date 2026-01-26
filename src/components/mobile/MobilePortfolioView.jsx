@@ -39,6 +39,8 @@ const MobilePortfolioView = ({
     setActiveAccounts,
     activeAssetTypes = ['STOCK', 'MF', 'ETF'],
     setActiveAssetTypes,
+    showFullySoldAssets = false,
+    setShowFullySoldAssets,
     isLoading = false
 }) => {
     const [showFilters, setShowFilters] = useState(false);
@@ -332,12 +334,21 @@ const MobilePortfolioView = ({
                                 'MF': 'Mutual Funds',
                                 'ETF': 'ETFs'
                             };
-
+                            
+                            // ✅ SHOULD-FIX: Separate open and closed positions
+                            const openItems = items.filter(item => (item.totalQty || 0) > 0);
+                            const closedItems = items.filter(item => (item.totalQty || 0) <= 0);
+                            const displayItems = showFullySoldAssets ? items : openItems;
+                            
                             // Calculate group totals
-                            const totalPnL = items.reduce((sum, item) => sum + item.absReturn, 0);
-                            const totalDayChange = items.reduce((sum, item) => sum + item.dayChange, 0);
-                            const totalValue = items.reduce((sum, item) => sum + item.currentValue, 0);
-                            const totalInvested = items.reduce((sum, item) => sum + (item.investedValue || 0), 0);
+                            // ✅ GOLDEN RULE: Group totals = ONLY what you currently own (open positions only)
+                            // - Invested, Current Value, Day Change: only open positions (totalQty > 0)
+                            // - Total P&L: only unrealized gains from open positions (not including realized from sold items)
+                            const totalUnrealizedGains = openItems.reduce((sum, item) => sum + (item.unrealizedGains || 0), 0);
+                            const totalPnL = totalUnrealizedGains; // Only unrealized (from open positions)
+                            const totalDayChange = openItems.reduce((sum, item) => sum + item.dayChange, 0);
+                            const totalValue = openItems.reduce((sum, item) => sum + item.currentValue, 0);
+                            const totalInvested = openItems.reduce((sum, item) => sum + (item.investedValue || 0), 0);
                             const totalDayChangePercent = totalValue - totalDayChange > 0 
                                 ? (totalDayChange / (totalValue - totalDayChange)) * 100 
                                 : 0;
@@ -346,7 +357,8 @@ const MobilePortfolioView = ({
                                 : 0;
 
                             // Calculate group XIRR (weighted average)
-                            const groupXIRR = items.reduce((sum, item) => {
+                            // ✅ GOLDEN RULE: XIRR only for open positions
+                            const groupXIRR = openItems.reduce((sum, item) => {
                                 if (item.xirr !== null && item.xirr !== undefined) {
                                     const weight = item.investedValue || 0;
                                     return sum + (item.xirr * weight);
@@ -398,7 +410,7 @@ const MobilePortfolioView = ({
                                                         <span className={`font-bold px-1.5 py-0.5 rounded-full ${
                                                             isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'
                                                         } ${isHeaderSticky ? 'text-[8px]' : 'text-[10px]'}`}>
-                                                            {items.length}
+                                                            {openItems.length}{showFullySoldAssets && closedItems.length > 0 ? ` (${closedItems.length})` : ''}
                                                 </span>
                                                     </div>
                                                     {!isHeaderSticky && (
@@ -551,24 +563,58 @@ const MobilePortfolioView = ({
                                     </div>
 
                                     {/* Individual Items - Shown when expanded with stagger animation */}
-                                    {isExpanded && items.map((item, idx) => (
-                                        <div 
-                                            key={item.id} 
-                                            className={`animate-fade-slide-in stagger-${Math.min(idx + 1, 8)}`}
-                                        >
-                                        <MobileAssetCard
-                                            item={item}
-                                            pnlView={pnlView}
-                                            onUpdateAsset={onUpdateAsset}
-                                            onDeleteAsset={onDeleteAsset}
-                                            onAddTransaction={onAddTransaction}
-                                            onUpdateTransaction={onUpdateTransaction}
-                                            onDeleteTransaction={onDeleteTransaction}
-                                            onAddDividend={onAddDividend}
-                                            onDeleteDividend={onDeleteDividend}
-                                        />
-                                        </div>
-                                    ))}
+                                    {isExpanded && (
+                                        <>
+                                            {/* Open Positions */}
+                                            {openItems.length > 0 && openItems.map((item, idx) => (
+                                                <div 
+                                                    key={item.id} 
+                                                    className={`animate-fade-slide-in stagger-${Math.min(idx + 1, 8)}`}
+                                                >
+                                                    <MobileAssetCard
+                                                        item={item}
+                                                        pnlView={pnlView}
+                                                        onUpdateAsset={onUpdateAsset}
+                                                        onDeleteAsset={onDeleteAsset}
+                                                        onAddTransaction={onAddTransaction}
+                                                        onUpdateTransaction={onUpdateTransaction}
+                                                        onDeleteTransaction={onDeleteTransaction}
+                                                        onAddDividend={onAddDividend}
+                                                        onDeleteDividend={onDeleteDividend}
+                                                    />
+                                                </div>
+                                            ))}
+                                            
+                                            {/* ✅ SHOULD-FIX: Closed Positions Label and Items */}
+                                            {showFullySoldAssets && closedItems.length > 0 && (
+                                                <>
+                                                    <div className="mt-4 mb-2 px-2">
+                                                        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                                                            Closed Positions
+                                                        </p>
+                                                    </div>
+                                                    {closedItems.map((item, idx) => (
+                                                        <div 
+                                                            key={item.id} 
+                                                            className={`animate-fade-slide-in stagger-${Math.min(idx + 1, 8)} opacity-75`}
+                                                        >
+                                                            <MobileAssetCard
+                                                                item={item}
+                                                                pnlView={pnlView}
+                                                                onUpdateAsset={onUpdateAsset}
+                                                                onDeleteAsset={onDeleteAsset}
+                                                                onAddTransaction={onAddTransaction}
+                                                                onUpdateTransaction={onUpdateTransaction}
+                                                                onDeleteTransaction={onDeleteTransaction}
+                                                                onAddDividend={onAddDividend}
+                                                                onDeleteDividend={onDeleteDividend}
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </>
+                                    )}
 
                                 </div>
                             );
@@ -679,6 +725,49 @@ const MobilePortfolioView = ({
                                         );
                                     })}
                                 </div>
+                            </div>
+
+                            {/* Phase 5: Show Fully Sold Assets Toggle */}
+                            <div>
+                                <h3 className={`text-sm font-black uppercase mb-4 ${
+                                    isDarkMode ? 'text-slate-100' : 'text-slate-800'
+                                }`}>Display Options</h3>
+                                <button
+                                    onClick={() => setShowFullySoldAssets && setShowFullySoldAssets(!showFullySoldAssets)}
+                                    className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                                        showFullySoldAssets 
+                                            ? isDarkMode 
+                                                ? 'bg-teal-900/30 border-teal-500'
+                                                : 'bg-teal-50 border-teal-500'
+                                            : isDarkMode
+                                                ? 'bg-slate-700 border-slate-600'
+                                                : 'bg-slate-50 border-slate-200'
+                                    }`}
+                                >
+                                    <div className="flex flex-col items-start">
+                                        <span className={`text-sm font-bold ${
+                                            showFullySoldAssets 
+                                                ? isDarkMode ? 'text-teal-300' : 'text-teal-700'
+                                                : isDarkMode ? 'text-slate-400' : 'text-slate-600'
+                                        }`}>
+                                            Show Fully Sold Assets
+                                        </span>
+                                        <span className={`text-xs mt-1 ${
+                                            isDarkMode ? 'text-slate-500' : 'text-slate-500'
+                                        }`}>
+                                            Display assets with 0 holdings
+                                        </span>
+                                    </div>
+                                    <div className={`w-12 h-6 rounded-full transition-all ${
+                                        showFullySoldAssets 
+                                            ? 'bg-teal-600' 
+                                            : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'
+                                    }`}>
+                                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${
+                                            showFullySoldAssets ? 'translate-x-6' : 'translate-x-0.5'
+                                        } mt-0.5`} />
+                                    </div>
+                                </button>
                             </div>
                         </div>
 

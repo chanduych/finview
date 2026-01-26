@@ -96,8 +96,20 @@ const ChartSection = ({ stats }) => {
         );
     };
 
+    // Phase 4: Prepare realized vs unrealized data for chart
+    const realizedUnrealizedData = [
+        { 
+            name: 'Realized', 
+            value: Math.abs(stats.realizedGains || 0) 
+        },
+        { 
+            name: 'Unrealized', 
+            value: Math.abs(stats.unrealizedGains || 0) 
+        }
+    ].filter(item => item.value > 0); // Only show if there's data
+
     return (
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {/* Asset Allocation Chart */}
             <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
                 <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-6">
@@ -251,6 +263,85 @@ const ChartSection = ({ stats }) => {
                     </div>
                 )}
             </div>
+
+            {/* Phase 4: Realized vs Unrealized Gains Chart */}
+            {realizedUnrealizedData.length > 0 && (
+                <div className="bg-white p-4 md:p-6 lg:p-8 rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-6">
+                        P&L Breakdown
+                    </h3>
+                    
+                    {isMobile ? (
+                        /* Mobile: Compact chart + bar legend */
+                        <div>
+                            <div className="h-[140px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={realizedUnrealizedData}
+                                            innerRadius="55%"
+                                            outerRadius="85%"
+                                            paddingAngle={3}
+                                            dataKey="value"
+                                        >
+                                            {realizedUnrealizedData.map((entry, index) => (
+                                                <Cell
+                                                    key={`cell-${index}`}
+                                                    fill={index === 0 ? '#10b981' : '#3b82f6'} // Green for realized, blue for unrealized
+                                                    stroke="none"
+                                                />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            formatter={(val, name, props) =>
+                                                tooltipFormatter(val, name, props, realizedUnrealizedData)
+                                            }
+                                            contentStyle={tooltipStyle}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            {renderMobileLegend(realizedUnrealizedData, 4)}
+                        </div>
+                    ) : (
+                        /* Desktop: Full chart with legend */
+                        <div className="h-[260px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={realizedUnrealizedData}
+                                        innerRadius="50%"
+                                        outerRadius="70%"
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {realizedUnrealizedData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={index === 0 ? '#10b981' : '#3b82f6'} // Green for realized, blue for unrealized
+                                                stroke="none"
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        formatter={(val, name, props) =>
+                                            tooltipFormatter(val, name, props, realizedUnrealizedData)
+                                        }
+                                        contentStyle={tooltipStyle}
+                                    />
+                                    <Legend
+                                        iconType="circle"
+                                        wrapperStyle={legendWrapperStyle}
+                                        formatter={(value, entry) =>
+                                            legendFormatter(value, entry, realizedUnrealizedData)
+                                        }
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+                </div>
+            )}
         </section>
     );
 };

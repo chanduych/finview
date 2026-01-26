@@ -46,16 +46,25 @@ const StatsCards = ({ stats, accounts, onQuickAdd }) => {
                             {formatCurrency(stats.current)}
                         </h2>
 
-                        {/* Absolute Profit */}
-                        <div className="mt-3">
-                            <p className={`text-base md:text-lg font-black ${stats.absReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                {stats.absReturn >= 0 ? '+' : ''}{formatCurrency(stats.absReturn)} overall
+                        {/* ✅ MUST-FIX: Show only unrealized gains (from open positions) as main metric */}
+                        <div className="mt-3 space-y-2">
+                            <p className={`text-base md:text-lg font-black ${(stats.unrealizedGains || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {(stats.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(stats.unrealizedGains || 0)} unrealized
                             </p>
+                            {/* Realized vs Unrealized Breakdown */}
+                            <div className="flex items-center gap-3 text-xs">
+                                <div className={`px-2 py-1 rounded-md ${(stats.realizedGains || 0) >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                                    <span className="font-bold">Realized:</span> {(stats.realizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(stats.realizedGains || 0)}
+                                </div>
+                                <div className={`px-2 py-1 rounded-md ${(stats.unrealizedGains || 0) >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                                    <span className="font-bold">Unrealized:</span> {(stats.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(stats.unrealizedGains || 0)}
+                                </div>
+                            </div>
                         </div>
 
                         <div className="mt-4 flex items-center gap-2 md:gap-3 flex-wrap">
-                            <div className={`px-2 md:px-3 py-1 rounded-full text-xs font-black ${stats.absReturn >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                {stats.absReturn >= 0 ? '+' : ''}{stats.absReturnPct.toFixed(2)}% Returns
+                            <div className={`px-2 md:px-3 py-1 rounded-full text-xs font-black ${(stats.unrealizedGains || 0) >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                {(stats.unrealizedGains || 0) >= 0 ? '+' : ''}{stats.absReturnPct.toFixed(2)}% Returns
                             </div>
                             {stats.portfolioXIRR !== null && (
                                 <div className="px-2 md:px-3 py-1 rounded-full text-xs font-black bg-indigo-500/20 text-indigo-400">
@@ -80,11 +89,11 @@ const StatsCards = ({ stats, accounts, onQuickAdd }) => {
                         </div>
                         <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden relative">
                             <div
-                                className={`h-full transition-all duration-1000 ${stats.absReturn >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`}
+                                className={`h-full transition-all duration-1000 ${(stats.unrealizedGains || 0) >= 0 ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'bg-rose-400'}`}
                                 style={{
                                     width: `${Math.min(100, Math.max(0, Math.abs(stats.absReturnPct)))}%`
                                 }}
-                                title={`Absolute return: ${stats.absReturnPct >= 0 ? '+' : ''}${stats.absReturnPct.toFixed(2)}%`}
+                                title={`Unrealized return: ${stats.absReturnPct >= 0 ? '+' : ''}${stats.absReturnPct.toFixed(2)}%`}
                             />
                         </div>
                     </div>

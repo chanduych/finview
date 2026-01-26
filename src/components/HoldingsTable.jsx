@@ -83,14 +83,25 @@ const HoldingsTable = ({
             const allTransactions = [];
             let totalValue = 0;
 
-            items.forEach(item => {
+            // ✅ GOLDEN RULE: Only calculate XIRR for open positions
+            const openItems = items.filter(item => (item.totalQty || 0) > 0);
+            if (openItems.length === 0) {
+                return null;
+            }
+
+            openItems.forEach(item => {
                 if (item.transactions && Array.isArray(item.transactions) && item.transactions.length > 0) {
                     item.transactions.forEach(tx => {
                         if (tx.date && tx.quantity && tx.price) {
                             const date = new Date(tx.date);
                             if (!isNaN(date.getTime())) {
+                                const txType = tx.type || 'BUY';
+                                // ✅ BUY → negative (outflow), SELL → positive (inflow)
+                                const amount = txType === 'BUY' 
+                                    ? -(tx.quantity * tx.price)  // Outflow
+                                    : (tx.quantity * tx.price);  // Inflow
                                 allTransactions.push({
-                                    amount: -(tx.quantity * tx.price),
+                                    amount,
                                     when: date
                                 });
                             }
@@ -173,12 +184,13 @@ const HoldingsTable = ({
             const Icon = typeInfo.icon;
             const isExpanded = expandedGroups.includes(type);
 
-            // Calculate group-level statistics
-            const totalInvested = items.reduce((sum, item) => sum + item.investedValue, 0);
-            const totalValue = items.reduce((sum, item) => sum + item.currentValue, 0);
-            const totalReturn = totalValue - totalInvested;
+            // ✅ MUST-FIX: Calculate group-level statistics - only open positions
+            const openItems = items.filter(item => (item.totalQty || 0) > 0);
+            const totalInvested = openItems.reduce((sum, item) => sum + (item.investedValue || 0), 0);
+            const totalValue = openItems.reduce((sum, item) => sum + (item.currentValue || 0), 0);
+            const totalReturn = totalValue - totalInvested; // Unrealized gains only
             const totalROI = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0;
-            const groupXIRR = calculateGroupXIRR(items);
+            const groupXIRR = calculateGroupXIRR(openItems); // Only open positions
 
             return (
                 <React.Fragment key={type}>
@@ -338,12 +350,13 @@ const HoldingsTable = ({
                     const Icon = typeInfo.icon;
                     const isExpanded = expandedGroups.includes(type);
 
-                    // Calculate group-level statistics
-                    const totalInvested = items.reduce((sum, item) => sum + item.investedValue, 0);
-                    const totalValue = items.reduce((sum, item) => sum + item.currentValue, 0);
-                    const totalReturn = totalValue - totalInvested;
+                    // ✅ MUST-FIX: Calculate group-level statistics - only open positions
+                    const openItems = items.filter(item => (item.totalQty || 0) > 0);
+                    const totalInvested = openItems.reduce((sum, item) => sum + (item.investedValue || 0), 0);
+                    const totalValue = openItems.reduce((sum, item) => sum + (item.currentValue || 0), 0);
+                    const totalReturn = totalValue - totalInvested; // Unrealized gains only
                     const totalROI = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0;
-                    const groupXIRR = calculateGroupXIRR(items);
+                    const groupXIRR = calculateGroupXIRR(openItems); // Only open positions
 
                     return (
                         <div key={type} className="space-y-3">

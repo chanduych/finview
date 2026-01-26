@@ -128,7 +128,12 @@ export const useSupabasePortfolio = () => {
       if (existing) {
         // Add transaction to existing portfolio
         const transaction = assetData.transactions[0];
-        const { error } = await createTransaction(existing.id, transaction);
+        // Ensure type is set (default to BUY if not specified)
+        const transactionWithType = {
+          ...transaction,
+          type: transaction.type || 'BUY'
+        };
+        const { error } = await createTransaction(existing.id, transactionWithType);
         if (error) throw error;
       } else {
         // Create new portfolio
@@ -145,7 +150,12 @@ export const useSupabasePortfolio = () => {
         // Add initial transaction
         if (assetData.transactions && assetData.transactions.length > 0) {
           const transaction = assetData.transactions[0];
-          const { error: txError } = await createTransaction(newPortfolio.id, transaction);
+          // Ensure type is set (default to BUY if not specified)
+          const transactionWithType = {
+            ...transaction,
+            type: transaction.type || 'BUY'
+          };
+          const { error: txError } = await createTransaction(newPortfolio.id, transactionWithType);
           if (txError) throw txError;
         }
       }
@@ -193,7 +203,12 @@ export const useSupabasePortfolio = () => {
 
         // Execute operations
         for (const tx of toAdd) {
-          await createTransaction(id, tx);
+          // Ensure type is set (default to BUY if not specified)
+          const transactionWithType = {
+            ...tx,
+            type: tx.type || 'BUY'
+          };
+          await createTransaction(id, transactionWithType);
         }
         
         for (const tx of toDelete) {
@@ -204,7 +219,8 @@ export const useSupabasePortfolio = () => {
           await updateTransaction(tx.id, {
             price: tx.price,
             quantity: tx.quantity,
-            date: tx.date
+            date: tx.date,
+            type: tx.type || 'BUY' // Include type in updates
           });
         }
 
