@@ -159,18 +159,18 @@ const App = () => {
         }
     }, [accounts]);
 
+    // Mobile navigation state
+    const [mobileView, setMobileView] = useState('portfolio');
+
+    // AddAssetModal state
+    const [selectedAccount, setSelectedAccount] = useState(accounts[0] || '');
+
     // Sync selectedAccount when accounts load (e.g. new user gets default account) or selected is no longer valid
     useEffect(() => {
         if (accounts.length > 0 && (!selectedAccount || !accounts.includes(selectedAccount))) {
             setSelectedAccount(accounts[0]);
         }
     }, [accounts, selectedAccount]);
-
-    // Mobile navigation state
-    const [mobileView, setMobileView] = useState('portfolio');
-
-    // AddAssetModal state
-    const [selectedAccount, setSelectedAccount] = useState(accounts[0] || '');
 
     // Wallet management state
     const [isAddingWallet, setIsAddingWallet] = useState(false);
