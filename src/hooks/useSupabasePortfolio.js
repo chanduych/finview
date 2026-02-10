@@ -66,6 +66,7 @@ export const useSupabasePortfolio = () => {
 
   /**
    * Load all data from Supabase (initial load - shows loading spinner)
+   * For new users with no accounts, creates a default "Default" account so first transaction can be added.
    */
   const loadData = async () => {
     try {
@@ -73,9 +74,21 @@ export const useSupabasePortfolio = () => {
       setError(null);
 
       // Load accounts
-      const { data: accountsData, error: accountsError } = await getAccounts();
+      let { data: accountsData, error: accountsError } = await getAccounts();
       if (accountsError) throw accountsError;
-      setAccounts(accountsData || []);
+      accountsData = accountsData || [];
+
+      // New user: ensure at least one account exists so "Add first investment" works
+      if (accountsData.length === 0) {
+        const { data: newAccount, error: createErr } = await createAccount('Default');
+        if (createErr) {
+          console.warn('Could not create default account:', createErr);
+        } else if (newAccount) {
+          accountsData = [newAccount];
+        }
+      }
+
+      setAccounts(accountsData);
 
       // Load portfolios
       const { data: portfoliosData, error: portfoliosError } = await getPortfolios();

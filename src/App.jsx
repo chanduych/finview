@@ -159,6 +159,13 @@ const App = () => {
         }
     }, [accounts]);
 
+    // Sync selectedAccount when accounts load (e.g. new user gets default account) or selected is no longer valid
+    useEffect(() => {
+        if (accounts.length > 0 && (!selectedAccount || !accounts.includes(selectedAccount))) {
+            setSelectedAccount(accounts[0]);
+        }
+    }, [accounts, selectedAccount]);
+
     // Mobile navigation state
     const [mobileView, setMobileView] = useState('portfolio');
 
@@ -727,8 +734,9 @@ const App = () => {
 
     /**
      * Handle adding a new asset from AddAssetModal
+     * Returns a Promise that resolves on success or rejects on error (so modal can stay open and show error).
      */
-    const handleAddAsset = (assetData) => {
+    const handleAddAsset = async (assetData) => {
         const existingAsset = portfolio.find(
             p => p.symbol.toUpperCase() === assetData.symbol.toUpperCase() &&
                  p.account === assetData.account &&
@@ -736,14 +744,13 @@ const App = () => {
         );
 
         if (existingAsset) {
-            // Add transaction to existing asset - only pass the transactions update
-            updateAsset(existingAsset.id, {
+            const result = await updateAsset(existingAsset.id, {
                 transactions: [...existingAsset.transactions, assetData.transaction]
             });
+            if (result?.error) throw result.error;
             console.log('📝 Added transaction to existing asset:', existingAsset.symbol);
         } else {
-            // Create new asset
-            addAsset({
+            const result = await addAsset({
                 symbol: assetData.symbol,
                 name: assetData.name,
                 type: assetData.type,
@@ -752,6 +759,7 @@ const App = () => {
                 transactions: [assetData.transaction],
                 dividends: []
             });
+            if (result?.error) throw result.error;
             console.log('✨ Created new asset:', assetData.symbol);
         }
     };

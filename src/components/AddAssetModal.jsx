@@ -161,7 +161,7 @@ const AddAssetModal = ({
     };
 
     // Handle add asset
-    const handleAddAsset = () => {
+    const handleAddAsset = async () => {
         if (!searchQuery || !buyPrice || !quantity) return;
         
         const txDate = new Date(buyDate);
@@ -169,6 +169,11 @@ const AddAssetModal = ({
         today.setHours(23, 59, 59, 999);
         if (txDate > today) {
             alert('Transaction date cannot be in the future');
+            return;
+        }
+
+        if (!selectedAccount) {
+            alert('Please select a wallet. If you have none, add one in Settings.');
             return;
         }
 
@@ -193,12 +198,19 @@ const AddAssetModal = ({
             }
         };
 
-        onAdd(assetData);
-        setAddStatus('success');
-        setTimeout(() => {
-            resetForm();
-            handleClose();
-        }, 600);
+        try {
+            await onAdd(assetData);
+            setAddStatus('success');
+            setTimeout(() => {
+                resetForm();
+                handleClose();
+            }, 600);
+        } catch (err) {
+            console.error('Add asset failed:', err);
+            setAddStatus('idle');
+            const message = err?.message || String(err);
+            alert(message.includes('Account not found') ? 'No wallet selected. Add a wallet in Settings first.' : `Could not add: ${message}`);
+        }
     };
 
     // Reset form
