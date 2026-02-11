@@ -407,7 +407,7 @@ const MobilePortfolioView = ({
                                                         }`}>
                                                             {typeLabels[type]}
                                                         </span>
-                                                        <span className={`font-bold px-1.5 py-0.5 rounded-full ${
+                                                        <span className={`font-bold px-1.5 py-0.5 rounded-full transition-all duration-200 ${
                                                             isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-500'
                                                         } ${isHeaderSticky ? 'text-[8px]' : 'text-[10px]'}`}>
                                                             {openItems.length}{showFullySoldAssets && closedItems.length > 0 ? ` (${closedItems.length})` : ''}
@@ -462,9 +462,10 @@ const MobilePortfolioView = ({
                                             </div>
                                         </button>
 
-                                        {/* Expandable Stats Row - Hidden when sticky */}
-                                        {showExpandedStats && (
-                                            <div className={`px-3 pb-3 pt-1 border-t ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
+                                        {/* Expandable Stats Row - Smooth expand/collapse */}
+                                        <div className={`expand-section overflow-hidden ${showExpandedStats ? 'open' : ''}`}>
+                                            <div className="expand-content">
+                                                <div className={`px-3 pb-3 pt-1 border-t ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
                                                 {/* Total/1D Toggle */}
                                                 <div className="flex justify-between items-center mb-2">
                                                     <p className={`text-[9px] font-bold uppercase ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -558,13 +559,14 @@ const MobilePortfolioView = ({
                                                         </div>
                                                     )}
                                                 </div>
+                                                </div>
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
 
-                                    {/* Individual Items - Shown when expanded with stagger animation */}
-                                    {isExpanded && (
-                                        <>
+                                    {/* Individual Items - Smooth expand/collapse with stagger */}
+                                    <div className={`expand-section overflow-hidden ${isExpanded ? 'open' : ''}`}>
+                                        <div className="expand-content">
                                             {/* Open Positions */}
                                             {openItems.length > 0 && openItems.map((item, idx) => (
                                                 <div 
@@ -585,37 +587,36 @@ const MobilePortfolioView = ({
                                                 </div>
                                             ))}
                                             
-                                            {/* ✅ SHOULD-FIX: Closed Positions Label and Items */}
-                                            {showFullySoldAssets && closedItems.length > 0 && (
-                                                <>
-                                                    <div className="mt-4 mb-2 px-2">
+                                            {/* Closed Positions – smooth transition when toggling show fully sold */}
+                                            {closedItems.length > 0 && (
+                                                <div className={`closed-positions-enter mt-2 ${showFullySoldAssets ? 'open' : ''}`}>
+                                                    <div className="mt-2 mb-2 px-2">
                                                         <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                                                             Closed Positions
                                                         </p>
                                                     </div>
-                                                    {closedItems.map((item, idx) => (
-                                                        <div 
-                                                            key={item.id} 
-                                                            className={`animate-fade-slide-in stagger-${Math.min(idx + 1, 8)} opacity-75`}
-                                                        >
-                                                            <MobileAssetCard
-                                                                item={item}
-                                                                pnlView={pnlView}
-                                                                onUpdateAsset={onUpdateAsset}
-                                                                onDeleteAsset={onDeleteAsset}
-                                                                onAddTransaction={onAddTransaction}
-                                                                onUpdateTransaction={onUpdateTransaction}
-                                                                onDeleteTransaction={onDeleteTransaction}
-                                                                onAddDividend={onAddDividend}
-                                                                onDeleteDividend={onDeleteDividend}
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                </>
+                                                    <div className="space-y-2">
+                                                        {closedItems.map((item, idx) => (
+                                                            <div key={item.id} className="closed-position-item opacity-75">
+                                                                <MobileAssetCard
+                                                                    item={item}
+                                                                    pnlView={pnlView}
+                                                                    onUpdateAsset={onUpdateAsset}
+                                                                    onDeleteAsset={onDeleteAsset}
+                                                                    onAddTransaction={onAddTransaction}
+                                                                    onUpdateTransaction={onUpdateTransaction}
+                                                                    onDeleteTransaction={onDeleteTransaction}
+                                                                    onAddDividend={onAddDividend}
+                                                                    onDeleteDividend={onDeleteDividend}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             )}
-                                        </>
-                                    )}
 
+                                        </div>
+                                    </div>
                                 </div>
                             );
                         });
@@ -626,8 +627,8 @@ const MobilePortfolioView = ({
 
             {/* Filter Bottom Sheet */}
             {showFilterSheet && (
-                <div className="fixed inset-0 z-[200] flex items-end bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-                    <div className={`w-full rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom ${
+                <div className="fixed inset-0 z-[200] flex items-end bg-slate-900/60 backdrop-blur-md filter-sheet-backdrop">
+                    <div className={`w-full rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col filter-sheet-panel ${
                         isDarkMode ? 'bg-slate-800' : 'bg-white'
                     }`}>
                         {/* Header */}

@@ -4,6 +4,7 @@
 
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { smartImport } from './smartImportMapper';
 
 /**
  * Exports portfolio data in various formats (JSON, CSV, or Excel)
@@ -439,4 +440,127 @@ export const handleImport = (e, callbacks) => {
     } else {
         alert('Unsupported file format. Please use JSON, CSV, or Excel (.xlsx) files.');
     }
+};
+
+/**
+ * Enhanced Smart Import with Preview - Uses intelligent field detection and shows preview modal
+ * @param {Event} e - File input change event
+ * @param {Function} onPreviewReady - Callback when preview data is ready (receives preview result)
+ * @returns {Promise} Promise that resolves with import result
+ */
+export const handleSmartImport = async (e, onPreviewReady) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split('.').pop();
+
+    // Only handle CSV and Excel for smart import (JSON is direct import)
+    if (fileExtension === 'csv') {
+        return new Promise((resolve, reject) => {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    try {
+                        const csvData = results.data;
+                        if (csvData.length === 0) {
+                            reject(new Error('CSV file is empty'));
+                            return;
+                        }
+
+                        // Use smart import to analyze and prepare preview
+                        const importResult = smartImport(csvData);
+
+                        if (!importResult.success) {
+                            reject(new Error(importResult.errors?.join(', ') || 'Import failed'));
+                            return;
+                        }
+
+                        // Show preview modal
+                        onPreviewReady(importResult);
+                        resolve(importResult);
+                    } catch (err) {
+                        reject(err);
+                    }
+                },
+                error: (error) => {
+                    reject(error);
+                }
+            });
+        });
+    } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                    if (jsonData.length === 0) {
+                        reject(new Error('Excel file is empty'));
+                        return;
+                    }
+
+                    // Use smart import to analyze and prepare preview
+                    const importResult = smartImport(jsonData);
+
+                    if (!importResult.success) {
+                        reject(new Error(importResult.errors?.join(', ') || 'Import failed'));
+                        return;
+                    }
+
+                    // Show preview modal
+                    onPreviewReady(importResult);
+                    resolve(importResult);
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = (error) => {
+                reject(error);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    } else {
+        return Promise.reject(new Error('Unsupported file format. Please use CSV or Excel (.xlsx) files for smart import.'));
+    }
+};
+
+/**
+ * Convert preview assets to portfolio format for final import
+ * @param {Array} acceptedAssets - Accepted assets from preview modal
+ * @returns {Object} Portfolio and accounts data ready for import
+ */
+export const convertPreviewToPortfolio = (acceptedAssets) => {
+    const portfolio = [];
+    const accounts = new Set();
+
+    acceptedAssets.forEach((asset, idx) => {
+        accounts.add(asset.account);
+
+        portfolio.push({
+            id: `${asset.symbol}_${asset.account}_${Date.now()}_${idx}`,
+            symbol: asset.symbol,
+            name: asset.name,
+            type: asset.type,
+            account: asset.account,
+            sector: asset.sector || '',
+            transactions: [{
+                id: Date.now() + idx,
+                type: asset.transactionType || 'BUY',
+                price: asset.price,
+                quantity: asset.quantity,
+                date: asset.date
+            }],
+            dividends: []
+        });
+    });
+
+    return {
+        portfolio,
+        accounts: Array.from(accounts)
+    };
 };

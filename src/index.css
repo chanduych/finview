@@ -330,6 +330,44 @@ body.modal-open {
 .stagger-7 { animation-delay: 0.35s; }
 .stagger-8 { animation-delay: 0.4s; }
 
+/* Closed positions (fully sold) section – smooth show/hide */
+.closed-positions-enter {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease-out;
+}
+.closed-positions-enter.open {
+  max-height: 2000px; /* large enough for any list */
+  opacity: 1;
+}
+.closed-positions-enter.open .closed-position-item {
+  animation: fadeSlideIn 0.35s ease-out forwards;
+  opacity: 0;
+}
+.closed-positions-enter.open .closed-position-item:nth-child(1) { animation-delay: 0.05s; }
+.closed-positions-enter.open .closed-position-item:nth-child(2) { animation-delay: 0.1s; }
+.closed-positions-enter.open .closed-position-item:nth-child(3) { animation-delay: 0.15s; }
+.closed-positions-enter.open .closed-position-item:nth-child(4) { animation-delay: 0.2s; }
+.closed-positions-enter.open .closed-position-item:nth-child(5) { animation-delay: 0.25s; }
+.closed-positions-enter.open .closed-position-item:nth-child(n+6) { animation-delay: 0.3s; }
+
+/* Filter sheet open animation */
+@keyframes filterSheetBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes filterSheetSlide {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.filter-sheet-backdrop {
+  animation: filterSheetBackdrop 0.25s ease-out forwards;
+}
+.filter-sheet-panel {
+  animation: filterSheetSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
 /* Smooth expand/collapse for content */
 .expand-collapse {
   display: grid;
@@ -720,7 +758,7 @@ body.modal-open {
 .expand-section {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .expand-section.open {
@@ -729,6 +767,7 @@ body.modal-open {
 
 .expand-section > .expand-content {
   overflow: hidden;
+  min-height: 0;
 }
 
 /* Asset type icon containers */

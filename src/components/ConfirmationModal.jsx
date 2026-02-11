@@ -37,8 +37,14 @@ const ConfirmationModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white w-full max-w-full sm:max-w-sm rounded-2xl md:rounded-[3rem] p-4 md:p-8 shadow-2xl space-y-4 md:space-y-6">
+        <div 
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in"
+            onClick={() => !isLoading && onClose()}
+        >
+            <div 
+                className="bg-white dark:bg-slate-800 w-full max-w-full sm:max-w-sm rounded-2xl md:rounded-[3rem] p-4 md:p-8 shadow-2xl space-y-4 md:space-y-6 border border-slate-200 dark:border-slate-700"
+                onClick={e => e.stopPropagation()}
+            >
                 {/* Icon */}
                 <div className="w-14 h-14 md:w-16 md:h-16 bg-rose-50 text-rose-500 rounded-2xl md:rounded-3xl flex items-center justify-center mx-auto">
                     <ShieldAlert size={28} className="md:w-8 md:h-8" />
@@ -46,10 +52,10 @@ const ConfirmationModal = ({
 
                 {/* Content */}
                 <div className="text-center space-y-2">
-                    <h2 className="text-lg md:text-xl font-black text-slate-800 tracking-tight">
+                    <h2 className="text-lg md:text-xl font-black text-slate-800 dark:text-white tracking-tight">
                         {title}
                     </h2>
-                    <div className="text-sm text-slate-500 font-medium">
+                    <div className="text-sm text-slate-500 dark:text-slate-400 font-medium">
                         {description}
                     </div>
                     {additionalInfo && (
@@ -64,7 +70,7 @@ const ConfirmationModal = ({
                     <button
                         onClick={onClose}
                         disabled={isLoading}
-                        className="flex-1 py-3 md:py-4 bg-slate-100 text-slate-600 rounded-xl md:rounded-2xl font-bold text-xs uppercase min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 py-3 md:py-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl md:rounded-2xl font-bold text-xs uppercase min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {cancelText}
                     </button>

@@ -8,7 +8,6 @@ import {
     FileJson,
     Download,
     Upload,
-    Activity
 } from 'lucide-react';
 
 /**
@@ -17,7 +16,6 @@ import {
  * Modal for managing application settings including:
  * - Wallet management (add/delete wallets)
  * - Data import/export (JSON, CSV, Excel)
- * - Access to reports and analytics
  *
  * Mobile-responsive with proper touch targets and adaptive layouts.
  *
@@ -33,7 +31,6 @@ import {
  * @param {Function} props.onConfirmAddWallet - Callback to confirm adding a new wallet
  * @param {Function} props.onExport - Callback to export data (receives format: 'json'|'csv'|'excel')
  * @param {Function} props.onImport - Callback to handle file import (receives event)
- * @param {Function} props.onOpenReports - Callback to open the reports modal
  */
 const SettingsModal = ({
     isOpen,
@@ -46,8 +43,7 @@ const SettingsModal = ({
     setNewWalletName,
     onConfirmAddWallet,
     onExport,
-    onImport,
-    onOpenReports
+    onImport
 }) => {
     if (!isOpen) return null;
 
@@ -183,19 +179,6 @@ const SettingsModal = ({
                                 <Download size={18} /> Export Excel
                             </button>
                         </div>
-                    </div>
-
-                    {/* Reports & Analytics Section */}
-                    <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <Activity size={12} /> Reports & Analytics
-                        </h3>
-                        <button
-                            onClick={onOpenReports}
-                            className="w-full flex items-center justify-center gap-3 p-4 md:p-5 bg-indigo-600 text-white rounded-2xl md:rounded-3xl hover:bg-indigo-700 transition-all font-black text-xs uppercase shadow-lg min-h-[52px] touch-manipulation"
-                        >
-                            <Activity size={18} /> View Reports
-                        </button>
                     </div>
                 </div>
             </div>

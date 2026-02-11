@@ -180,6 +180,7 @@ const App = () => {
 
     // Asset deletion state
     const [assetToDelete, setAssetToDelete] = useState(null);
+    const [isDeletingAsset, setIsDeletingAsset] = useState(false);
     const [assetMenuOpen, setAssetMenuOpen] = useState(null);
 
     // Asset editing state
@@ -765,12 +766,20 @@ const App = () => {
     };
 
     /**
-     * Handle deleting an asset
+     * Handle deleting an asset (async for Supabase; shows loading and errors)
      */
-    const handleDeleteAsset = () => {
-        if (assetToDelete) {
-            deleteAsset(assetToDelete.id);
+    const handleDeleteAsset = async () => {
+        if (!assetToDelete) return;
+        setIsDeletingAsset(true);
+        try {
+            const result = await Promise.resolve(deleteAsset(assetToDelete.id));
+            if (result?.error) throw result.error;
             setAssetToDelete(null);
+        } catch (err) {
+            console.error('Error deleting asset:', err);
+            alert(err?.message || 'Failed to delete asset. Please try again.');
+        } finally {
+            setIsDeletingAsset(false);
         }
     };
 
@@ -782,84 +791,73 @@ const App = () => {
     };
 
     /**
-     * Handle adding a transaction to an existing asset
-     * @param {Object} assetOrId - Asset object or asset ID
-     * @param {Object} transaction - Transaction data
+     * Handle adding a transaction to an existing asset (returns Promise for error handling)
      */
-    const handleAddTransaction = (assetOrId, transaction) => {
+    const handleAddTransaction = async (assetOrId, transaction) => {
         const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
-        if (asset) {
-            updateAsset(assetId, {
-                transactions: [...asset.transactions, transaction]
-            });
-        }
+        if (!asset) return;
+        const result = await Promise.resolve(updateAsset(assetId, {
+            transactions: [...asset.transactions, transaction]
+        }));
+        if (result?.error) throw result.error;
     };
 
     /**
-     * Handle updating a transaction
-     * @param {Object} assetOrId - Asset object or asset ID
-     * @param {Object} transactionData - Transaction data with id and updates
+     * Handle updating a transaction (returns Promise for error handling)
      */
-    const handleUpdateTransaction = (assetOrId, transactionData) => {
+    const handleUpdateTransaction = async (assetOrId, transactionData) => {
         const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const transactionId = transactionData.id;
         const asset = portfolio.find(p => p.id === assetId);
-        if (asset) {
-            const updatedTransactions = asset.transactions.map(tx =>
-                tx.id === transactionId ? { ...tx, ...transactionData } : tx
-            );
-            updateAsset(assetId, { transactions: updatedTransactions });
+        if (!asset) return;
+        const updatedTransactions = asset.transactions.map(tx =>
+            tx.id === transactionId ? { ...tx, ...transactionData } : tx
+        );
+        const result = await Promise.resolve(updateAsset(assetId, { transactions: updatedTransactions }));
+        if (result?.error) throw result.error;
+    };
+
+    /**
+     * Handle deleting a transaction (returns Promise so callers can await and show errors)
+     */
+    const handleDeleteTransaction = async (assetOrId, transactionId) => {
+        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
+        const asset = portfolio.find(p => p.id === assetId);
+        if (!asset) return;
+        const updatedTransactions = asset.transactions.filter(tx => tx.id !== transactionId);
+        if (updatedTransactions.length === 0) {
+            const result = await Promise.resolve(deleteAsset(assetId));
+            if (result?.error) throw result.error;
+        } else {
+            const result = await Promise.resolve(updateAsset(assetId, { transactions: updatedTransactions }));
+            if (result?.error) throw result.error;
         }
     };
 
     /**
-     * Handle deleting a transaction
-     * @param {Object} assetOrId - Asset object or asset ID
-     * @param {string|number} transactionId - Transaction ID
+     * Handle adding a dividend to an asset (returns Promise for error handling)
      */
-    const handleDeleteTransaction = (assetOrId, transactionId) => {
+    const handleAddDividend = async (assetOrId, dividend) => {
         const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
-        if (asset) {
-            const updatedTransactions = asset.transactions.filter(tx => tx.id !== transactionId);
-
-            // If no transactions left, delete the asset
-            if (updatedTransactions.length === 0) {
-                deleteAsset(assetId);
-            } else {
-                updateAsset(assetId, { transactions: updatedTransactions });
-            }
-        }
+        if (!asset) return;
+        const result = await Promise.resolve(updateAsset(assetId, {
+            dividends: [...(asset.dividends || []), dividend]
+        }));
+        if (result?.error) throw result.error;
     };
 
     /**
-     * Handle adding a dividend to an asset
-     * @param {Object} assetOrId - Asset object or asset ID
-     * @param {Object} dividend - Dividend data
+     * Handle deleting a dividend (returns Promise so callers can await and show errors)
      */
-    const handleAddDividend = (assetOrId, dividend) => {
+    const handleDeleteDividend = async (assetOrId, dividendId) => {
         const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
         const asset = portfolio.find(p => p.id === assetId);
-        if (asset) {
-            updateAsset(assetId, {
-                dividends: [...(asset.dividends || []), dividend]
-            });
-        }
-    };
-
-    /**
-     * Handle deleting a dividend
-     * @param {Object} assetOrId - Asset object or asset ID
-     * @param {string|number} dividendId - Dividend ID
-     */
-    const handleDeleteDividend = (assetOrId, dividendId) => {
-        const assetId = typeof assetOrId === 'object' ? assetOrId.id : assetOrId;
-        const asset = portfolio.find(p => p.id === assetId);
-        if (asset) {
-            const updatedDividends = (asset.dividends || []).filter(d => d.id !== dividendId);
-            updateAsset(assetId, { dividends: updatedDividends });
-        }
+        if (!asset) return;
+        const updatedDividends = (asset.dividends || []).filter(d => d.id !== dividendId);
+        const result = await Promise.resolve(updateAsset(assetId, { dividends: updatedDividends }));
+        if (result?.error) throw result.error;
     };
 
     // ========================================================================
@@ -877,6 +875,19 @@ const App = () => {
             setNewWalletName('');
             setIsAddingWallet(false);
         }
+    };
+
+    /**
+     * Add a new account from Add Asset modal (e.g. when selecting account)
+     * Returns a Promise so the modal can show errors.
+     */
+    const handleAddAccountFromModal = async (name) => {
+        const trimmed = (name || '').trim();
+        if (!trimmed) return;
+        if (accounts.includes(trimmed)) return; // already exists
+        const result = await Promise.resolve(addAccount(trimmed));
+        if (result?.error) throw result.error;
+        setActiveAccounts(prev => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
     };
 
     /**
@@ -1253,6 +1264,7 @@ const App = () => {
                 accounts={accounts}
                 selectedAccount={selectedAccount}
                 setSelectedAccount={setSelectedAccount}
+                onAddAccount={handleAddAccountFromModal}
             />
 
             {/* Settings Modal */}
@@ -1268,7 +1280,6 @@ const App = () => {
                 onDeleteWallet={(wallet) => setWalletToDelete(wallet)}
                 onImport={handleImportWrapper}
                 onExport={handleExportWrapper}
-                onOpenReports={() => setShowReportsModal(true)}
                 portfolio={portfolio}
                 setPortfolio={setPortfolio}
             />
@@ -1302,11 +1313,12 @@ const App = () => {
             {assetToDelete && (
                 <ConfirmationModal
                     isOpen={!!assetToDelete}
-                    onClose={() => setAssetToDelete(null)}
+                    onClose={() => !isDeletingAsset && setAssetToDelete(null)}
                     onConfirm={handleDeleteAsset}
                     title="Delete Asset"
                     description={`Are you sure you want to delete ${assetToDelete.symbol}? This will remove all transactions and data for this asset.`}
                     confirmText="Delete"
+                    isLoading={isDeletingAsset}
                 />
             )}
         </>

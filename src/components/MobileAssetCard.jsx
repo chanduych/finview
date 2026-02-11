@@ -132,17 +132,14 @@ const MobileAssetCard = ({
             };
 
             if (editingTransaction.isPending) {
-                onAddTransaction(item, transactionData);
+                await Promise.resolve(onAddTransaction(item, transactionData));
             } else {
-                onUpdateTransaction(item, transactionData);
+                await Promise.resolve(onUpdateTransaction(item, transactionData));
             }
-            
-            // Small delay to show loading state
-            await new Promise(resolve => setTimeout(resolve, 300));
             setEditingTransaction(null);
         } catch (error) {
             console.error('Error saving transaction:', error);
-            alert('Failed to save transaction. Please try again.');
+            alert(error?.message || 'Failed to save transaction. Please try again.');
         } finally {
             setSaving(false);
         }
@@ -158,18 +155,15 @@ const MobileAssetCard = ({
         setSaving(true);
         try {
             if (confirmDelete.type === 'transaction') {
-                onDeleteTransaction(item, confirmDelete.id, confirmDelete.data);
+                await Promise.resolve(onDeleteTransaction(item, confirmDelete.id, confirmDelete.data));
             } else if (confirmDelete.type === 'dividend') {
-                onDeleteDividend(item, confirmDelete.id, confirmDelete.data);
+                await Promise.resolve(onDeleteDividend(item, confirmDelete.id, confirmDelete.data));
             }
-            
-            // Small delay to show loading state
-            await new Promise(resolve => setTimeout(resolve, 300));
             setConfirmDelete(null);
             setEditingTransaction(null);
         } catch (error) {
             console.error('Error deleting:', error);
-            alert('Failed to delete. Please try again.');
+            alert(error?.message || 'Failed to delete. Please try again.');
         } finally {
             setSaving(false);
         }
@@ -206,18 +200,15 @@ const MobileAssetCard = ({
         setSaving(true);
         
         try {
-            onAddDividend(item, {
+            await Promise.resolve(onAddDividend(item, {
                 id: Date.now(),
                 amount,
                 date: editingTransaction.date
-            });
-            
-            // Small delay to show loading state
-            await new Promise(resolve => setTimeout(resolve, 300));
+            }));
             setEditingTransaction(null);
         } catch (error) {
             console.error('Error saving dividend:', error);
-            alert('Failed to save dividend. Please try again.');
+            alert(error?.message || 'Failed to save dividend. Please try again.');
         } finally {
             setSaving(false);
         }
@@ -242,8 +233,14 @@ const MobileAssetCard = ({
         <div className="bg-white dark:bg-slate-800 rounded-2xl card-shadow border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300">
             {/* Confirmation Modal */}
             {confirmDelete && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+                <div 
+                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
+                    onClick={() => !saving && setConfirmDelete(null)}
+                >
+                    <div 
+                        className="bg-white dark:bg-slate-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center">
                                 <AlertCircle size={20} className="text-rose-600" />
@@ -352,9 +349,10 @@ const MobileAssetCard = ({
                 </div>
             </div>
 
-            {/* Expanded Content */}
-            {isExpanded && (
-                <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-4 space-y-4 animate-fade-slide-in">
+            {/* Expanded Content - Smooth expand/collapse */}
+            <div className={`expand-section overflow-hidden ${isExpanded ? 'open' : ''}`}>
+                <div className="expand-content">
+                <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-4 space-y-4">
                     
                     {/* Investment Summary - Collapsible Single Section */}
                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -369,10 +367,11 @@ const MobileAssetCard = ({
                                     Investment Details
                                 </span>
                             </div>
-                            <ChevronDown size={16} className={`text-slate-400 transition-transform ${showInvestmentDetails ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${showInvestmentDetails ? 'rotate-180' : ''}`} />
                         </button>
 
-                        {showInvestmentDetails && (
+                        <div className={`expand-section overflow-hidden ${showInvestmentDetails ? 'open' : ''}`}>
+                            <div className="expand-content">
                             <div className="p-4 space-y-3">
                                 {/* Section 1: Total Investment Overview */}
                                 <div>
@@ -523,7 +522,8 @@ const MobileAssetCard = ({
                                     </div>
                                 </div>
                             </div>
-                        )}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Transactions Section */}
@@ -1136,7 +1136,8 @@ const MobileAssetCard = ({
                         <Trash2 size={10} /> Remove this asset
                     </button>
                 </div>
-            )}
+                </div>
+            </div>
         </div>
     );
 };

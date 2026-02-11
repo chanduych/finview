@@ -69,7 +69,8 @@ const AddAssetModal = ({
     onAdd,
     accounts,
     selectedAccount,
-    setSelectedAccount
+    setSelectedAccount,
+    onAddAccount
 }) => {
     // Dark mode context
     const darkModeContext = useDarkModeContext();
@@ -89,6 +90,9 @@ const AddAssetModal = ({
     const [isSelecting, setIsSelecting] = useState(false);
     const [showAccountPicker, setShowAccountPicker] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
+    const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
+    const [newAccountName, setNewAccountName] = useState('');
+    const [addAccountStatus, setAddAccountStatus] = useState('idle'); // idle | loading | error
 
     // Search hook
     const {
@@ -640,7 +644,11 @@ const AddAssetModal = ({
             {showAccountPicker && (
                 <div 
                     className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40"
-                    onClick={() => setShowAccountPicker(false)}
+                    onClick={() => {
+                        setShowAccountPicker(false);
+                        setIsAddingNewAccount(false);
+                        setNewAccountName('');
+                    }}
                 >
                     <div 
                         className={`w-full rounded-t-[28px] shadow-2xl overflow-hidden ${
@@ -661,6 +669,8 @@ const AddAssetModal = ({
                                     onClick={() => {
                                         setSelectedAccount(acc);
                                         setShowAccountPicker(false);
+                                        setIsAddingNewAccount(false);
+                                        setNewAccountName('');
                                     }}
                                     className={`w-full px-4 py-3.5 rounded-xl flex items-center justify-between mb-1 transition-all ${
                                         selectedAccount === acc 
@@ -676,6 +686,88 @@ const AddAssetModal = ({
                                     {selectedAccount === acc && <Check size={18} className="text-teal-500" />}
                                 </button>
                             ))}
+                            {onAddAccount && (
+                                <>
+                                    <div className={`my-2 border-t ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`} />
+                                    {!isAddingNewAccount ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsAddingNewAccount(true);
+                                                setNewAccountName('');
+                                                setAddAccountStatus('idle');
+                                            }}
+                                            className={`w-full px-4 py-3.5 rounded-xl flex items-center gap-3 mb-1 transition-all ${
+                                                isDarkMode 
+                                                    ? 'text-teal-400 active:bg-slate-800' 
+                                                    : 'text-teal-600 active:bg-slate-50'
+                                            } border border-dashed ${isDarkMode ? 'border-teal-600' : 'border-teal-300'}`}
+                                        >
+                                            <Plus size={18} strokeWidth={2.5} />
+                                            <span className="font-bold">Add new account</span>
+                                        </button>
+                                    ) : (
+                                        <div className="space-y-2 pt-1">
+                                            <input
+                                                type="text"
+                                                value={newAccountName}
+                                                onChange={e => {
+                                                    setNewAccountName(e.target.value);
+                                                    setAddAccountStatus('idle');
+                                                }}
+                                                placeholder="Account name"
+                                                className={`w-full px-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                                                    isDarkMode 
+                                                        ? 'bg-slate-800 border-slate-600 text-white placeholder:text-slate-500' 
+                                                        : 'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400'
+                                                }`}
+                                                onFocus={handleInputFocus}
+                                                autoFocus
+                                            />
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsAddingNewAccount(false);
+                                                        setNewAccountName('');
+                                                        setAddAccountStatus('idle');
+                                                    }}
+                                                    className={`flex-1 py-3 rounded-xl font-bold text-sm ${isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={!newAccountName.trim() || addAccountStatus === 'loading'}
+                                                    onClick={async () => {
+                                                        const name = newAccountName.trim();
+                                                        if (!name) return;
+                                                        setAddAccountStatus('loading');
+                                                        try {
+                                                            await onAddAccount(name);
+                                                            setSelectedAccount(name);
+                                                            setNewAccountName('');
+                                                            setIsAddingNewAccount(false);
+                                                            setShowAccountPicker(false);
+                                                        } catch (err) {
+                                                            console.error('Add account failed:', err);
+                                                            setAddAccountStatus('error');
+                                                            alert(err?.message || 'Could not add account. Try again.');
+                                                        }
+                                                    }}
+                                                    className="flex-1 py-3 rounded-xl font-bold text-sm bg-teal-500 text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {addAccountStatus === 'loading' ? (
+                                                        <><RefreshCw size={16} className="animate-spin" /> Save</>
+                                                    ) : (
+                                                        'Save'
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -143,7 +143,7 @@ const AssetRow = ({
         setEditingTransaction(null);
     };
 
-    const handleDeleteTransaction = (tx) => {
+    const handleDeleteTransaction = async (tx) => {
         // Can't delete a pending transaction - just cancel edit
         if (editingTransaction?.isPending) {
             setEditingTransaction(null);
@@ -157,11 +157,15 @@ const AssetRow = ({
         
         if (!confirmDelete) return;
         
-        // Use callback prop for proper Supabase sync
-        if (onDeleteTransaction) {
-            onDeleteTransaction(item.id, tx.id);
+        try {
+            if (onDeleteTransaction) {
+                await Promise.resolve(onDeleteTransaction(item, tx.id));
+            }
+            setEditingTransaction(null);
+        } catch (err) {
+            console.error('Error deleting transaction:', err);
+            alert(err?.message || 'Failed to delete transaction. Please try again.');
         }
-        setEditingTransaction(null);
     };
 
     const handleAddDividend = () => {
@@ -223,7 +227,7 @@ const AssetRow = ({
         setEditingTransaction(null);
     };
 
-    const handleDeleteDividend = (div) => {
+    const handleDeleteDividend = async (div) => {
         // Can't delete a pending dividend - just cancel
         if (editingTransaction?.isPendingDividend) {
             setEditingTransaction(null);
@@ -237,11 +241,15 @@ const AssetRow = ({
         
         if (!confirmDelete) return;
         
-        // Use callback prop for proper Supabase sync
-        if (onDeleteDividend) {
-            onDeleteDividend(item.id, div.id);
+        try {
+            if (onDeleteDividend) {
+                await Promise.resolve(onDeleteDividend(item.id, div.id));
+            }
+            setEditingTransaction(null);
+        } catch (err) {
+            console.error('Error deleting dividend:', err);
+            alert(err?.message || 'Failed to delete dividend. Please try again.');
         }
-        setEditingTransaction(null);
     };
 
     return (
