@@ -14,6 +14,7 @@ import AddAssetModal from './components/AddAssetModal';
 import SettingsModal from './components/SettingsModal';
 import ReportsModal from './components/ReportsModal';
 import ConfirmationModal from './components/ConfirmationModal';
+import ImportPreviewModal from './components/ImportPreviewModal';
 import MobileLayout from './components/MobileLayout';
 import MobilePortfolioView from './components/mobile/MobilePortfolioView';
 import MobileInsightsView from './components/mobile/MobileInsightsView';
@@ -35,7 +36,7 @@ import { useAuth } from './contexts/AuthContext';
 import { formatCurrency, formatCurrencyWithDecimals } from './utils/formatters';
 import { calculateXIRR, calculateCapitalGains } from './utils/calculations';
 import { calculateFIFORealizedGains, calculateRealizedCapitalGains, calculateUnrealizedCapitalGains } from './utils/fifoCalculations';
-import { handleExport, handleImport, getYearWiseSummary } from './utils/importExport';
+import { handleExport, handleImport, handleSmartImport, convertPreviewToPortfolio, getYearWiseSummary } from './utils/importExport';
 import { runTransactionTypeMigration } from './utils/migrateTransactionType';
 import { COLORS, APP_ID } from './constants/appConfig';
 import { TAX_RATES, LTCG_EXEMPTION } from './constants/taxConfig';
@@ -188,6 +189,11 @@ const App = () => {
 
     // P&L view toggle state ('total' or '1day')
     const [pnlView, setPnlView] = useState('total');
+
+    // Import preview state
+    const [showImportPreview, setShowImportPreview] = useState(false);
+    const [importPreviewData, setImportPreviewData] = useState(null);
+    const [isImporting, setIsImporting] = useState(false);
 
     // ========================================================================
     // COMPUTED VALUES - Portfolio Processing
@@ -942,18 +948,88 @@ const App = () => {
     };
 
     /**
-     * Handle importing portfolio data
+     * Handle importing portfolio data with smart preview
      */
-    const handleImportWrapper = (e) => {
-        handleImport(e, {
-            setPortfolio,
-            setAccounts,
-            setMarketPrices,
-            setShowSettingsModal,
-            accounts,
-            bulkImportPortfolio,
-            useSupabase
-        });
+    const handleImportWrapper = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const fileName = file.name.toLowerCase();
+        const fileExtension = fileName.split('.').pop();
+
+        // JSON files: Direct import (no preview needed - it's a full backup)
+        if (fileExtension === 'json') {
+            handleImport(e, {
+                setPortfolio,
+                setAccounts,
+                setMarketPrices,
+                setShowSettingsModal,
+                accounts,
+                bulkImportPortfolio,
+                useSupabase
+            });
+            return;
+        }
+
+        // CSV/Excel files: Use smart import with preview
+        try {
+            await handleSmartImport(e, (result) => {
+                // Show preview modal with detected assets
+                setImportPreviewData(result);
+                setShowImportPreview(true);
+            });
+        } catch (error) {
+            console.error('Smart import error:', error);
+            alert('Import failed: ' + error.message);
+        }
+
+        // Reset file input
+        e.target.value = '';
+    };
+
+    /**
+     * Handle final import after user reviews preview
+     */
+    const handleConfirmImport = async (acceptedAssets) => {
+        setIsImporting(true);
+
+        try {
+            // Convert preview format to portfolio format
+            const { portfolio: importedPortfolio, accounts: importedAccounts } =
+                convertPreviewToPortfolio(acceptedAssets);
+
+            // Use existing bulk import logic
+            if (useSupabase && bulkImportPortfolio) {
+                const result = await bulkImportPortfolio(importedPortfolio, importedAccounts);
+                if (result.error) {
+                    throw new Error(result.error.message);
+                }
+
+                // Show success message with stats
+                const stats = result.stats;
+                const message = `✅ Import Completed!\n\n` +
+                    `📁 Accounts Created: ${stats.accountsCreated}\n` +
+                    `📊 New Assets: ${stats.portfoliosCreated}\n` +
+                    `➕ Transactions Added: ${stats.transactionsAdded}\n` +
+                    `⏭️ Duplicates Skipped: ${stats.transactionsSkipped}`;
+                alert(message);
+            } else {
+                // LocalStorage mode
+                setPortfolio(prev => [...prev, ...importedPortfolio]);
+                setAccounts(prev => [...new Set([...prev, ...importedAccounts])]);
+                alert(`✅ Successfully imported ${acceptedAssets.length} assets!`);
+            }
+
+            // Close modals
+            setShowImportPreview(false);
+            setShowSettingsModal(false);
+
+        } catch (error) {
+            console.error('Import confirmation error:', error);
+            alert('Import failed: ' + error.message);
+        } finally {
+            setIsImporting(false);
+        }
     };
 
     // ========================================================================
@@ -1321,6 +1397,17 @@ const App = () => {
                     isLoading={isDeletingAsset}
                 />
             )}
+
+            {/* Import Preview Modal */}
+            <ImportPreviewModal
+                isOpen={showImportPreview}
+                onClose={() => setShowImportPreview(false)}
+                previewAssets={importPreviewData?.previewAssets || []}
+                stats={importPreviewData?.stats}
+                accounts={accounts}
+                onConfirmImport={handleConfirmImport}
+                isImporting={isImporting}
+            />
         </>
     );
 };

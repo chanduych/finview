@@ -539,6 +539,7 @@ export const useSupabasePortfolio = () => {
       // Log import stats
       console.log('📊 Import Stats:', stats);
 
+      setLoading(false); // ✅ Set loading to false after successful import
       return { error: null, stats };
     } catch (err) {
       console.error('Error bulk importing:', err);
