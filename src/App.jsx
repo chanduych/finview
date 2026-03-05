@@ -131,10 +131,26 @@ const App = () => {
 
     // Track if accounts have been initially loaded
     const accountsInitialized = useRef(false);
-    
+    // Track previous accounts to detect actual changes (not just reference changes)
+    const prevAccountsRef = useRef([]);
+
     // Sync activeAccounts with accounts ONLY on initial load or when new accounts are added
     useEffect(() => {
         if (accounts.length > 0) {
+            // Check if accounts actually changed (content, not just reference)
+            const accountsChanged =
+                prevAccountsRef.current.length !== accounts.length ||
+                !prevAccountsRef.current.every(acc => accounts.includes(acc)) ||
+                !accounts.every(acc => prevAccountsRef.current.includes(acc));
+
+            // Only update if accounts actually changed
+            if (!accountsChanged && accountsInitialized.current) {
+                return; // No actual change - skip update to preserve filters
+            }
+
+            // Update previous accounts reference
+            prevAccountsRef.current = [...accounts];
+
             setActiveAccounts(prev => {
                 // First load - set to all accounts
                 if (!accountsInitialized.current) {
@@ -320,6 +336,7 @@ const App = () => {
                 totalQty: clampedQty, // ✅ Clamped to zero for fully sold
                 avgPrice,
                 currentPrice,
+                priceUSD: marketData?.priceUSD, // USD price for US stocks (display only)
                 currentValue, // ✅ Clamped to zero for fully sold
                 investedValue: invested, // ✅ Cost of UN-SOLD buy lots only (open positions), 0 for fully sold
                 totalRealized, // Total realized from sells (exit proceeds)
@@ -428,7 +445,8 @@ const App = () => {
         const typeAllocation = [
             { name: 'Equities', value: openPositions.filter(p => p.type === 'STOCK').reduce((s,p) => s+p.currentValue, 0) },
             { name: 'Mutual Funds', value: openPositions.filter(p => p.type === 'MF').reduce((s,p) => s+p.currentValue, 0) },
-            { name: 'ETFs', value: openPositions.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) }
+            { name: 'ETFs', value: openPositions.filter(p => p.type === 'ETF').reduce((s,p) => s+p.currentValue, 0) },
+            { name: 'US Stocks', value: openPositions.filter(p => p.type === 'US_STOCK').reduce((s,p) => s+p.currentValue, 0) }
         ].filter(x => x.value > 0);
 
         // ✅ Wallet allocation - Use open positions only
@@ -437,9 +455,9 @@ const App = () => {
             value: openPositions.filter(p => p.account === acc).reduce((s,p) => s+p.currentValue, 0)
         })).filter(x => x.value > 0);
 
-        // Sector-wise exposure
+        // Sector-wise exposure (Indian stocks + US stocks)
         const sectorExposure = {};
-        filteredPortfolio.filter(p => p.type === 'STOCK' && p.sector).forEach(p => {
+        filteredPortfolio.filter(p => (p.type === 'STOCK' || p.type === 'US_STOCK') && p.sector).forEach(p => {
             sectorExposure[p.sector] = (sectorExposure[p.sector] || 0) + p.currentValue;
         });
 
@@ -712,22 +730,25 @@ const App = () => {
             const equity = openPositionsForInsights.filter(p => p.type === 'STOCK').reduce((s, p) => s + p.currentValue, 0);
             const mf = openPositionsForInsights.filter(p => p.type === 'MF').reduce((s, p) => s + p.currentValue, 0);
             const etf = openPositionsForInsights.filter(p => p.type === 'ETF').reduce((s, p) => s + p.currentValue, 0);
+            const usStock = openPositionsForInsights.filter(p => p.type === 'US_STOCK').reduce((s, p) => s + p.currentValue, 0);
 
             const equityPercent = (equity / filteredTotalValue) * 100;
             const mfPercent = (mf / filteredTotalValue) * 100;
             const etfPercent = (etf / filteredTotalValue) * 100;
+            const usStockPercent = (usStock / filteredTotalValue) * 100;
 
             insightsArray.push({
                 type: 'overweight',
                 title: 'Asset Allocation',
                 description: 'Portfolio distribution by asset type',
-                value: `${Math.max(equityPercent, mfPercent, etfPercent).toFixed(1)}%`,
+                value: `${Math.max(equityPercent, mfPercent, etfPercent, usStockPercent).toFixed(1)}%`,
                 icon: PieChart,
                 color: 'indigo',
                 data: {
                     equity: { value: equity, percent: equityPercent },
                     mf: { value: mf, percent: mfPercent },
-                    etf: { value: etf, percent: etfPercent }
+                    etf: { value: etf, percent: etfPercent },
+                    usStock: { value: usStock, percent: usStockPercent }
                 }
             });
         }
@@ -991,33 +1012,52 @@ const App = () => {
      * Handle final import after user reviews preview
      */
     const handleConfirmImport = async (acceptedAssets) => {
+        console.log('🔄 Starting import with accepted assets:', acceptedAssets?.length);
         setIsImporting(true);
 
         try {
+            if (!acceptedAssets || acceptedAssets.length === 0) {
+                throw new Error('No assets to import');
+            }
+
             // Convert preview format to portfolio format
             const { portfolio: importedPortfolio, accounts: importedAccounts } =
                 convertPreviewToPortfolio(acceptedAssets);
 
+            console.log('📦 Converted to portfolio format:', {
+                portfolioCount: importedPortfolio?.length,
+                accountsCount: importedAccounts?.length
+            });
+
+            if (importedPortfolio.length === 0) {
+                throw new Error('Failed to convert assets to portfolio format');
+            }
+
             // Use existing bulk import logic
             if (useSupabase && bulkImportPortfolio) {
                 const result = await bulkImportPortfolio(importedPortfolio, importedAccounts);
-                if (result.error) {
-                    throw new Error(result.error.message);
+
+                if (result?.error) {
+                    throw new Error(result.error.message || 'Import failed');
                 }
 
                 // Show success message with stats
-                const stats = result.stats;
+                const stats = result?.stats || {};
                 const message = `✅ Import Completed!\n\n` +
-                    `📁 Accounts Created: ${stats.accountsCreated}\n` +
-                    `📊 New Assets: ${stats.portfoliosCreated}\n` +
-                    `➕ Transactions Added: ${stats.transactionsAdded}\n` +
-                    `⏭️ Duplicates Skipped: ${stats.transactionsSkipped}`;
+                    `📁 Accounts Created: ${stats.accountsCreated || 0}\n` +
+                    `📊 New Assets: ${stats.portfoliosCreated || 0}\n` +
+                    `➕ Transactions Added: ${stats.transactionsAdded || 0}\n` +
+                    `⏭️ Duplicates Skipped: ${stats.transactionsSkipped || 0}`;
                 alert(message);
+
+                console.log('✅ Import successful:', stats);
             } else {
                 // LocalStorage mode
                 setPortfolio(prev => [...prev, ...importedPortfolio]);
                 setAccounts(prev => [...new Set([...prev, ...importedAccounts])]);
                 alert(`✅ Successfully imported ${acceptedAssets.length} assets!`);
+
+                console.log('✅ LocalStorage import successful');
             }
 
             // Close modals
@@ -1025,8 +1065,8 @@ const App = () => {
             setShowSettingsModal(false);
 
         } catch (error) {
-            console.error('Import confirmation error:', error);
-            alert('Import failed: ' + error.message);
+            console.error('❌ Import confirmation error:', error);
+            alert('Import failed: ' + (error?.message || 'Unknown error'));
         } finally {
             setIsImporting(false);
         }

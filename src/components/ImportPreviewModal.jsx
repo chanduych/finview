@@ -30,9 +30,9 @@ import {
 const ImportPreviewModal = ({
     isOpen,
     onClose,
-    previewAssets,
-    stats,
-    accounts,
+    previewAssets = [],
+    stats = {},
+    accounts = [],
     onConfirmImport,
     isImporting = false
 }) => {
@@ -40,14 +40,37 @@ const ImportPreviewModal = ({
     const [expandedAsset, setExpandedAsset] = useState(null);
     const [selectedWalletFilter, setSelectedWalletFilter] = useState('all');
 
-    if (!isOpen) return null;
+    // Update assets when previewAssets changes
+    React.useEffect(() => {
+        if (previewAssets && previewAssets.length > 0) {
+            setAssets(previewAssets);
+        }
+    }, [previewAssets]);
 
-    // Compute statistics
-    const acceptedCount = assets.filter(a => a.accepted).length;
-    const rejectedCount = assets.filter(a => !a.accepted).length;
-    const totalValue = assets
-        .filter(a => a.accepted)
-        .reduce((sum, a) => sum + (a.quantity * a.price), 0);
+    // Compute statistics with safety checks
+    const acceptedCount = Array.isArray(assets) ? assets.filter(a => a?.accepted).length : 0;
+    const rejectedCount = Array.isArray(assets) ? assets.filter(a => !a?.accepted).length : 0;
+    const totalValue = Array.isArray(assets)
+        ? assets
+            .filter(a => a?.accepted)
+            .reduce((sum, a) => sum + ((a?.quantity || 0) * (a?.price || 0)), 0)
+        : 0;
+
+    // Filter assets - MUST be before early return
+    const filteredAssets = useMemo(() => {
+        if (selectedWalletFilter === 'all') return assets;
+        return assets.filter(a => a?.account === selectedWalletFilter);
+    }, [assets, selectedWalletFilter]);
+
+    // Get unique wallets with safety check - MUST be before early return
+    const uniqueWallets = useMemo(() => {
+        return Array.isArray(assets)
+            ? [...new Set(assets.map(a => a?.account).filter(Boolean))]
+            : [];
+    }, [assets]);
+
+    // Early return AFTER all hooks
+    if (!isOpen) return null;
 
     // Update asset field
     const updateAsset = (id, field, value) => {
@@ -85,15 +108,6 @@ const ImportPreviewModal = ({
         const acceptedAssets = assets.filter(a => a.accepted);
         onConfirmImport(acceptedAssets);
     };
-
-    // Filter assets
-    const filteredAssets = useMemo(() => {
-        if (selectedWalletFilter === 'all') return assets;
-        return assets.filter(a => a.account === selectedWalletFilter);
-    }, [assets, selectedWalletFilter]);
-
-    // Get unique wallets
-    const uniqueWallets = [...new Set(assets.map(a => a.account))];
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">

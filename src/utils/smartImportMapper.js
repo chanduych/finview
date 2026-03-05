@@ -10,19 +10,38 @@ export const FIELD_MAPPINGS = {
     symbol: {
         required: true,
         patterns: [
-            /^symbol$/i,
+            /^symbol$/i,              // Exact "Symbol" - highest priority
             /^stock.*symbol$/i,
+            /^trading.*symbol$/i,
             /^scrip.*code$/i,
             /^scrip$/i,
-            /^isin$/i,
             /^code$/i,
-            /^instrument$/i,
-            /^security$/i,
             /^ticker$/i,
             /^scheme.*code$/i
+            // NOTE: Removed /^isin$/i, /^instrument$/i, /^security$/i
+            // These are now separate optional fields
         ],
         validate: (value) => value && value.toString().trim().length > 0,
         transform: (value) => value.toString().trim().toUpperCase()
+    },
+    isin: {
+        required: false,
+        patterns: [
+            /^isin$/i,
+            /^isin.*code$/i,
+            /^isin.*number$/i
+        ],
+        transform: (value) => value?.toString().trim().toUpperCase() || ''
+    },
+    instrument: {
+        required: false,
+        patterns: [
+            /^instrument$/i,
+            /^instrument.*type$/i,
+            /^security$/i,
+            /^security.*type$/i
+        ],
+        transform: (value) => value?.toString().trim() || ''
     },
     name: {
         required: false,
@@ -48,7 +67,9 @@ export const FIELD_MAPPINGS = {
             /^holdings$/i,
             /^balance$/i,
             /^net.*qty$/i,
-            /^closing.*balance$/i
+            /^closing.*balance$/i,
+            /^quantity.*available$/i,  // Zerodha: "Quantity Available"
+            /^available.*qty$/i
         ],
         validate: (value) => !isNaN(parseFloat(value)) && parseFloat(value) > 0,
         transform: (value) => parseFloat(value)
@@ -65,7 +86,8 @@ export const FIELD_MAPPINGS = {
             /^cost$/i,
             /^nav$/i,
             /^ltp$/i,
-            /^last.*traded.*price$/i
+            /^last.*traded.*price$/i,
+            /^avg\.?\s*price$/i  // Zerodha: "Average Price" or "Avg. Price"
         ],
         validate: (value) => !isNaN(parseFloat(value)) && parseFloat(value) > 0,
         transform: (value) => parseFloat(value)
@@ -175,6 +197,8 @@ export function autoDetectFields(headers) {
     const mappings = {};
     const unmappedColumns = [];
 
+    console.log('🔍 Auto-detecting fields from headers:', headers);
+
     headers.forEach((header, index) => {
         const normalizedHeader = header.trim();
         let matched = false;
@@ -188,6 +212,7 @@ export function autoDetectFields(headers) {
                         required: config.required
                     };
                     matched = true;
+                    console.log(`✅ Matched "${normalizedHeader}" → ${fieldName}`);
                     break;
                 }
             }
@@ -196,8 +221,12 @@ export function autoDetectFields(headers) {
 
         if (!matched) {
             unmappedColumns.push({ index, name: normalizedHeader });
+            console.log(`❌ No match for "${normalizedHeader}"`);
         }
     });
+
+    console.log('📊 Final mappings:', mappings);
+    console.log('📊 Unmapped columns:', unmappedColumns);
 
     return { mappings, unmappedColumns };
 }
@@ -218,6 +247,8 @@ export function validateMappings(mappings) {
             errors.push(`Missing required field: ${field}`);
         }
     }
+
+    console.log('🔍 Validation result:', { isValid: errors.length === 0, errors, warnings });
 
     return {
         isValid: errors.length === 0,

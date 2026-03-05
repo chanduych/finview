@@ -16,10 +16,12 @@ import {
     IndianRupee,
     Layers,
     BarChart3,
-    PieChart
+    PieChart,
+    Globe,
+    DollarSign
 } from 'lucide-react';
 import { useSearch } from '../hooks/useSearch';
-import { verifySymbol, handleSelectResult as handleSelectResultService } from '../services/marketDataService';
+import { verifySymbol, handleSelectResult as handleSelectResultService, getMarketData } from '../services/marketDataService';
 import { useDarkModeContext } from './MobileLayout';
 
 // Handle mobile keyboard - scroll focused input into view
@@ -57,6 +59,15 @@ const ASSET_TYPE_CONFIG = {
         lightBgClass: 'bg-amber-50',
         textClass: 'text-amber-600',
         borderClass: 'border-amber-500'
+    },
+    US_STOCK: { 
+        icon: Globe, 
+        label: 'US Stock', 
+        color: 'blue',
+        bgClass: 'bg-blue-500',
+        lightBgClass: 'bg-blue-50',
+        textClass: 'text-blue-600',
+        borderClass: 'border-blue-500'
     }
 };
 
@@ -93,6 +104,9 @@ const AddAssetModal = ({
     const [isAddingNewAccount, setIsAddingNewAccount] = useState(false);
     const [newAccountName, setNewAccountName] = useState('');
     const [addAccountStatus, setAddAccountStatus] = useState('idle'); // idle | loading | error
+    // US stocks: price currency (default USD) and rate for conversion
+    const [priceCurrency, setPriceCurrency] = useState('USD'); // 'USD' | 'INR'
+    const [usdInrRate, setUsdInrRate] = useState(null); // set when US stock selected from search
 
     // Search hook
     const {
@@ -154,7 +168,19 @@ const AddAssetModal = ({
             setSelectedAssetType(resultData.type);
             if (resultData.data) {
                 setPreviewPrice(resultData.data.price);
-                setBuyPrice(resultData.data.price.toString());
+                if (resultData.type === 'US_STOCK') {
+                    setPriceCurrency('USD');
+                    const rate = resultData.data.priceUSD > 0
+                        ? resultData.data.price / resultData.data.priceUSD
+                        : null;
+                    setUsdInrRate(rate);
+                    setBuyPrice(typeof resultData.data.priceUSD === 'number'
+                        ? resultData.data.priceUSD.toString()
+                        : resultData.data.price.toString());
+                } else {
+                    setUsdInrRate(null);
+                    setBuyPrice(resultData.data.price.toString());
+                }
             }
             setTimeout(() => setIsSelecting(false), 1000);
         } catch (error) {
@@ -187,6 +213,23 @@ const AddAssetModal = ({
         let type = selectedAssetType;
         if (type === 'STOCK' && /^\d+$/.test(symbol)) type = 'MF';
 
+        let priceToStore = parseFloat(buyPrice);
+        if (type === 'US_STOCK') {
+            if (priceCurrency === 'USD') {
+                let rate = usdInrRate;
+                if (rate == null || rate <= 0) {
+                    try {
+                        const data = await getMarketData(symbol, 'US_STOCK');
+                        rate = (data?.priceUSD > 0 && data?.price) ? data.price / data.priceUSD : 83;
+                    } catch (_) {
+                        rate = 83;
+                    }
+                }
+                priceToStore = priceToStore * rate;
+            }
+            // else INR: priceToStore already in INR
+        }
+
         const assetData = {
             symbol,
             name: selectedAssetName || symbol,
@@ -195,7 +238,7 @@ const AddAssetModal = ({
             sector: sector || '',
             transaction: {
                 type: transactionType, // BUY or SELL
-                price: parseFloat(buyPrice),
+                price: priceToStore,
                 quantity: parseFloat(quantity),
                 date: buyDate,
                 id: Date.now()
@@ -229,6 +272,8 @@ const AddAssetModal = ({
         setSector('');
         setSelectedAssetType('STOCK');
         setSearchResults([]);
+        setPriceCurrency('USD');
+        setUsdInrRate(null);
     };
 
     // Handle close with animation
@@ -534,13 +579,60 @@ const AddAssetModal = ({
                             />
                         </div>
                         <div className="space-y-2">
+                            {selectedAssetType === 'US_STOCK' && (
+                                <div className="flex items-center gap-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide">
+                                        Price in
+                                    </label>
+                                    <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (priceCurrency === 'INR' && buyPrice && usdInrRate > 0) {
+                                                    const inr = parseFloat(buyPrice);
+                                                    if (Number.isFinite(inr)) setBuyPrice((inr / usdInrRate).toFixed(2));
+                                                }
+                                                setPriceCurrency('USD');
+                                            }}
+                                            className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1 ${
+                                                priceCurrency === 'USD'
+                                                    ? 'bg-blue-500 text-white'
+                                                    : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                            }`}
+                                        >
+                                            <DollarSign size={12} /> USD
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (priceCurrency === 'USD' && buyPrice && usdInrRate > 0) {
+                                                    const usd = parseFloat(buyPrice);
+                                                    if (Number.isFinite(usd)) setBuyPrice((usd * usdInrRate).toFixed(2));
+                                                }
+                                                setPriceCurrency('INR');
+                                            }}
+                                            className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1 ${
+                                                priceCurrency === 'INR'
+                                                    ? 'bg-blue-500 text-white'
+                                                    : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                                            }`}
+                                        >
+                                            <IndianRupee size={12} /> INR
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                                <IndianRupee size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Buy'} Price
+                                {selectedAssetType === 'US_STOCK' ? (
+                                    priceCurrency === 'USD' ? <><DollarSign size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Buy'} Price (USD)</> : <><IndianRupee size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Buy'} Price (₹)</>
+                                ) : (
+                                    <><IndianRupee size={12} /> {transactionType === 'SELL' ? 'Sell' : 'Buy'} Price</>
+                                )}
                             </label>
                             <input
                                 type="number"
                                 inputMode="decimal"
-                                placeholder="0.00"
+                                placeholder={selectedAssetType === 'US_STOCK' && priceCurrency === 'USD' ? '0.00' : '0.00'}
                                 className={`w-full px-4 py-3.5 rounded-xl border font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base ${
                                     isDarkMode 
                                         ? 'bg-slate-800 border-slate-700 text-white' 
@@ -550,6 +642,23 @@ const AddAssetModal = ({
                                 onChange={e => setBuyPrice(e.target.value)}
                                 onFocus={handleInputFocus}
                             />
+                            {selectedAssetType === 'US_STOCK' && buyPrice && (() => {
+                                const p = parseFloat(buyPrice);
+                                if (!Number.isFinite(p)) return null;
+                                const rate = usdInrRate || 83;
+                                if (priceCurrency === 'USD') {
+                                    return (
+                                        <p className="text-[10px] text-slate-500 font-medium">
+                                            ≈ ₹{(p * rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    );
+                                }
+                                return (
+                                    <p className="text-[10px] text-slate-500 font-medium">
+                                        ≈ ${(p / rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                );
+                            })()}
                         </div>
                     </div>
 
@@ -594,17 +703,43 @@ const AddAssetModal = ({
                     )}
 
                     {/* Investment Summary */}
-                    {quantity && buyPrice && (
-                        <div className="p-4 bg-gradient-to-r from-teal-500 to-teal-600 rounded-2xl text-white">
-                            <p className="text-[10px] font-bold uppercase opacity-80 mb-1">Total Investment</p>
-                            <p className="text-2xl font-black tabular-nums">
-                                ₹{(parseFloat(quantity || 0) * parseFloat(buyPrice || 0)).toLocaleString('en-IN', { 
-                                    minimumFractionDigits: 2, 
-                                    maximumFractionDigits: 2 
-                                })}
-                            </p>
-                        </div>
-                    )}
+                    {quantity && buyPrice && (() => {
+                        const q = parseFloat(quantity || 0);
+                        const p = parseFloat(buyPrice || 0);
+                        if (!Number.isFinite(q) || !Number.isFinite(p)) return null;
+                        const rate = usdInrRate || 83;
+                        const isUS = selectedAssetType === 'US_STOCK';
+                        const totalUSD = isUS && priceCurrency === 'USD' ? q * p : (isUS ? q * p / rate : 0);
+                        const totalINR = isUS && priceCurrency === 'INR' ? q * p : (isUS ? q * p * rate : q * p);
+                        return (
+                            <div className="p-4 bg-gradient-to-r from-teal-500 to-teal-600 rounded-2xl text-white">
+                                <p className="text-[10px] font-bold uppercase opacity-80 mb-1">Total Investment</p>
+                                {isUS && priceCurrency === 'USD' ? (
+                                    <>
+                                        <p className="text-2xl font-black tabular-nums">
+                                            ${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                        <p className="text-xs font-semibold opacity-90 mt-0.5">
+                                            ≈ ₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                        </p>
+                                    </>
+                                ) : isUS && priceCurrency === 'INR' ? (
+                                    <>
+                                        <p className="text-2xl font-black tabular-nums">
+                                            ₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                        <p className="text-xs font-semibold opacity-90 mt-0.5">
+                                            ≈ ${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-2xl font-black tabular-nums">
+                                        ₹{totalINR.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Add Button */}
                     <button

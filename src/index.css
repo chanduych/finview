@@ -592,6 +592,20 @@ body.modal-open {
   opacity: 0.3;
 }
 
+.asset-pattern-usstock {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 50%, #1D4ED8 100%);
+  position: relative;
+}
+
+.asset-pattern-usstock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(255,255,255,0.08) 2px, rgba(255,255,255,0.08) 4px);
+  opacity: 0.5;
+}
+
 .premium-gradient::before {
   content: '';
   position: absolute;

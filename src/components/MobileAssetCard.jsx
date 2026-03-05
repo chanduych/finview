@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
     ChevronDown, Plus, Trash2,
-    TrendingUp, TrendingDown, ShieldAlert, BarChart3, Briefcase, Layers,
+    TrendingUp, TrendingDown, ShieldAlert, BarChart3, Briefcase, Layers, Globe,
     Calendar, Clock, Coins, X, Check, AlertCircle, Edit3, Loader2, Wallet
 } from 'lucide-react';
-import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters';
+import { formatCurrency, formatCurrencyWithDecimals, formatUSD, inrToUSD } from '../utils/formatters';
 import { useDarkModeContext } from './MobileLayout';
 
 // Asset type icon component
@@ -12,7 +12,8 @@ const AssetTypeIcon = ({ type, size = 18 }) => {
     const icons = {
         STOCK: BarChart3,
         MF: Briefcase,
-        ETF: Layers
+        ETF: Layers,
+        US_STOCK: Globe
     };
     const Icon = icons[type] || BarChart3;
     return <Icon size={size} strokeWidth={2.5} />;
@@ -289,6 +290,7 @@ const MobileAssetCard = ({
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-white ${
                         item.type === 'STOCK' ? 'asset-pattern-stock' :
                         item.type === 'MF' ? 'asset-pattern-mf' :
+                        item.type === 'US_STOCK' ? 'asset-pattern-usstock' :
                         'asset-pattern-etf'
                     }`}>
                         <AssetTypeIcon type={item.type} size={16} />
@@ -310,9 +312,12 @@ const MobileAssetCard = ({
                     <div className="text-right flex-shrink-0">
                         {pnlView === 'total' ? (
                             <>
-                                <p className="text-[13px] font-bold tabular-nums text-slate-800 dark:text-white">
-                                    ₹{(item.currentPrice || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                                </p>
+                                    <p className="text-[13px] font-bold tabular-nums text-slate-800 dark:text-white" title={item.type === 'US_STOCK' && item.priceUSD != null ? formatUSD(item.priceUSD) : undefined}>
+                                        ₹{(item.currentPrice || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                        {item.type === 'US_STOCK' && item.priceUSD != null && (
+                                            <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(item.priceUSD)}</span>
+                                        )}
+                                    </p>
                                 <p className={`text-[9px] font-semibold tabular-nums ${
                                     unrealizedGains >= 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
@@ -379,15 +384,21 @@ const MobileAssetCard = ({
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Invested</span>
-                                            <span className="text-sm font-black text-slate-800 dark:text-white tabular-nums">
-                                                {formatCurrency(invested)}
+                                            <span className="text-right">
+                                                <span className="text-sm font-black text-slate-800 dark:text-white tabular-nums">{formatCurrency(invested)}</span>
+                                                {item.type === 'US_STOCK' && inrToUSD(invested, item.priceUSD, item.currentPrice) != null && (
+                                                    <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(inrToUSD(invested, item.priceUSD, item.currentPrice))}</span>
+                                                )}
                                             </span>
                                         </div>
                                         {(item.totalRealized || 0) > 0 && (
                                             <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700">
                                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Sold Proceeds</span>
-                                                <span className="text-sm font-black text-slate-600 dark:text-slate-300 tabular-nums">
-                                                    {formatCurrency(item.totalRealized || 0)}
+                                                <span className="text-right">
+                                                    <span className="text-sm font-black text-slate-600 dark:text-slate-300 tabular-nums">{formatCurrency(item.totalRealized || 0)}</span>
+                                                    {item.type === 'US_STOCK' && inrToUSD(item.totalRealized, item.priceUSD, item.currentPrice) != null && (
+                                                        <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(inrToUSD(item.totalRealized, item.priceUSD, item.currentPrice))}</span>
+                                                    )}
                                                 </span>
                                             </div>
                                         )}
@@ -401,8 +412,11 @@ const MobileAssetCard = ({
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-center">
                                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Exit Proceeds</span>
-                                                <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">
-                                                    {formatCurrency(item.totalRealized || 0)}
+                                                <span className="text-right">
+                                                    <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">{formatCurrency(item.totalRealized || 0)}</span>
+                                                    {item.type === 'US_STOCK' && inrToUSD(item.totalRealized, item.priceUSD, item.currentPrice) != null && (
+                                                        <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(inrToUSD(item.totalRealized, item.priceUSD, item.currentPrice))}</span>
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
@@ -413,24 +427,37 @@ const MobileAssetCard = ({
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-center">
                                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Cost Basis</span>
-                                                <span className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums">
-                                                    {formatCurrency(invested)}
+                                                <span className="text-right">
+                                                    <span className="text-sm font-black text-slate-700 dark:text-slate-300 tabular-nums">{formatCurrency(invested)}</span>
+                                                    {item.type === 'US_STOCK' && inrToUSD(invested, item.priceUSD, item.currentPrice) != null && (
+                                                        <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(inrToUSD(invested, item.priceUSD, item.currentPrice))}</span>
+                                                    )}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center">
                                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Market Value</span>
-                                                <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">
-                                                    {formatCurrency(item.currentValue || 0)}
+                                                <span className="text-right" title={item.type === 'US_STOCK' && item.priceUSD != null ? formatUSD((item.totalQty || 0) * item.priceUSD) : undefined}>
+                                                    <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums">
+                                                        {formatCurrency(item.currentValue || 0)}
+                                                    </span>
+                                                    {item.type === 'US_STOCK' && item.priceUSD != null && (
+                                                        <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD((item.totalQty || 0) * item.priceUSD)}</span>
+                                                    )}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700">
                                                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Unrealized P&L</span>
-                                                <span className={`text-sm font-black tabular-nums ${
-                                                    (item.unrealizedGains || 0) >= 0 
-                                                        ? 'text-emerald-600 dark:text-emerald-400' 
-                                                        : 'text-rose-600 dark:text-rose-400'
-                                                }`}>
-                                                    {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.unrealizedGains || 0)}
+                                                <span className="text-right">
+                                                    <span className={`text-sm font-black tabular-nums ${
+                                                        (item.unrealizedGains || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                                    }`}>
+                                                        {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.unrealizedGains || 0)}
+                                                    </span>
+                                                    {item.type === 'US_STOCK' && inrToUSD(item.unrealizedGains, item.priceUSD, item.currentPrice) != null && (
+                                                        <span className={`block text-[9px] font-semibold ${(item.unrealizedGains || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.unrealizedGains, item.priceUSD, item.currentPrice))}
+                                                        </span>
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
@@ -453,6 +480,9 @@ const MobileAssetCard = ({
                                             }`}>
                                                 {(item.realizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.realizedGains || 0)}
                                             </p>
+                                            {item.type === 'US_STOCK' && inrToUSD(item.realizedGains, item.priceUSD, item.currentPrice) != null && (
+                                                <p className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">{(item.realizedGains || 0) >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.realizedGains, item.priceUSD, item.currentPrice))}</p>
+                                            )}
                                             <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">From exit</p>
                                         </div>
                                     ) : (
@@ -469,6 +499,9 @@ const MobileAssetCard = ({
                                                     }`}>
                                                         {(item.realizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.realizedGains || 0)}
                                                     </p>
+                                                    {item.type === 'US_STOCK' && inrToUSD(item.realizedGains, item.priceUSD, item.currentPrice) != null && (
+                                                        <p className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">{(item.realizedGains || 0) >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.realizedGains, item.priceUSD, item.currentPrice))}</p>
+                                                    )}
                                                     <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">From sells</p>
                                                 </div>
                                                 <div className={`p-2.5 rounded-lg ${
@@ -482,6 +515,9 @@ const MobileAssetCard = ({
                                                     }`}>
                                                         {(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatCurrency(item.unrealizedGains || 0)}
                                                     </p>
+                                                    {item.type === 'US_STOCK' && inrToUSD(item.unrealizedGains, item.priceUSD, item.currentPrice) != null && (
+                                                        <p className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">{(item.unrealizedGains || 0) >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.unrealizedGains, item.priceUSD, item.currentPrice))}</p>
+                                                    )}
                                                     <p className="text-[8px] text-slate-500 dark:text-slate-400 mt-0.5">On holdings</p>
                                                 </div>
                                             </div>
@@ -489,12 +525,17 @@ const MobileAssetCard = ({
                                             <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase">Total P&L</span>
-                                                    <span className={`text-base font-black tabular-nums ${
-                                                        (item.absReturn || 0) >= 0 
-                                                            ? 'text-emerald-600 dark:text-emerald-400' 
-                                                            : 'text-rose-600 dark:text-rose-400'
-                                                    }`}>
-                                                        {(item.absReturn || 0) >= 0 ? '+' : ''}{formatCurrency(item.absReturn || 0)}
+                                                    <span className="text-right">
+                                                        <span className={`text-base font-black tabular-nums ${
+                                                            (item.absReturn || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                                        }`}>
+                                                            {(item.absReturn || 0) >= 0 ? '+' : ''}{formatCurrency(item.absReturn || 0)}
+                                                        </span>
+                                                        {item.type === 'US_STOCK' && inrToUSD(item.absReturn, item.priceUSD, item.currentPrice) != null && (
+                                                            <span className={`block text-[9px] font-semibold ${(item.absReturn || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                {(item.absReturn || 0) >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.absReturn, item.priceUSD, item.currentPrice))}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             </div>
@@ -867,6 +908,9 @@ const MobileAssetCard = ({
                                                                         </div>
                                                                         <p className="text-[10px] text-slate-500 font-medium">
                                                                             {tx.quantity} × ₹{tx.price.toFixed(2)}
+                                                                            {item.type === 'US_STOCK' && item.priceUSD != null && item.currentPrice > 0 && (
+                                                                                <span className="block text-[9px] text-slate-400">{formatUSD(inrToUSD(tx.quantity * tx.price, item.priceUSD, item.currentPrice))}</span>
+                                                                            )}
                                                                         </p>
                                                 </div>
                                                 <div className="text-right">
@@ -875,6 +919,9 @@ const MobileAssetCard = ({
                                                                                 <p className={`text-sm font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                                                     {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
                                                                                 </p>
+                                                                                {item.type === 'US_STOCK' && inrToUSD(txPnl, item.priceUSD, item.currentPrice) != null && (
+                                                                                    <p className="text-[9px] font-semibold text-slate-500">{txPnl >= 0 ? '+' : ''}{formatUSD(inrToUSD(txPnl, item.priceUSD, item.currentPrice))}</p>
+                                                                                )}
                                                                                 <p className={`text-[10px] font-bold ${txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                                                     {txPnlPercent >= 0 ? '+' : ''}{txPnlPercent.toFixed(1)}%
                                                                                 </p>
@@ -889,6 +936,9 @@ const MobileAssetCard = ({
                                                                                 <p className={`text-sm font-black tabular-nums ${txPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                                                     {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
                                                                                 </p>
+                                                                                {item.type === 'US_STOCK' && inrToUSD(txPnl, item.priceUSD, item.currentPrice) != null && (
+                                                                                    <p className="text-[9px] font-semibold text-slate-500">{txPnl >= 0 ? '+' : ''}{formatUSD(inrToUSD(txPnl, item.priceUSD, item.currentPrice))}</p>
+                                                                                )}
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -904,6 +954,9 @@ const MobileAssetCard = ({
                                                                     </span>
                                                                     <span className="text-[9px] text-slate-400">
                                                                         ₹{formatCurrency(tx.quantity * tx.price).replace('₹', '')} invested
+                                                                        {item.type === 'US_STOCK' && inrToUSD(tx.quantity * tx.price, item.priceUSD, item.currentPrice) != null && (
+                                                                            <span className="ml-1">({formatUSD(inrToUSD(tx.quantity * tx.price, item.priceUSD, item.currentPrice))})</span>
+                                                                        )}
                                                                     </span>
                                                 </div>
                                             </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, Layers, Activity, Building2, TrendingUp, Wallet } from 'lucide-react';
+import { Search, Plus, Layers, Activity, Building2, TrendingUp, Wallet, Globe } from 'lucide-react';
 
 /**
  * TableControlBar Component - Search, add button, view selector
@@ -33,7 +33,8 @@ const TableControlBar = ({
         { value: 'ALL', label: 'All', icon: Layers },
         { value: 'STOCK', label: 'Stocks', icon: Activity },
         { value: 'MF', label: 'Mutual Funds', labelShort: 'MF', icon: Building2 },
-        { value: 'ETF', label: 'ETFs', icon: TrendingUp }
+        { value: 'ETF', label: 'ETFs', icon: TrendingUp },
+        { value: 'US_STOCK', label: 'US Stocks', icon: Globe }
     ];
 
     const handleAddNew = () => {

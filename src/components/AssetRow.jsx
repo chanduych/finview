@@ -3,7 +3,7 @@ import {
     History, ChevronUp, MoreVertical, Trash2, Edit3,
     Plus, ShieldAlert, TrendingUp, TrendingDown
 } from 'lucide-react';
-import { formatCurrency, formatCurrencyWithDecimals } from '../utils/formatters';
+import { formatCurrency, formatCurrencyWithDecimals, formatUSD, inrToUSD } from '../utils/formatters';
 
 /**
  * AssetRow Component - Individual asset row with expand/collapse
@@ -263,7 +263,9 @@ const AssetRow = ({
                 <td className="px-3 md:px-6 lg:px-8 py-4 md:py-6">
                     <div className="flex items-center gap-2 md:gap-3">
                         <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${
-                            item.type === 'STOCK' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'
+                            item.type === 'STOCK' ? 'bg-indigo-100 text-indigo-600' :
+                            item.type === 'US_STOCK' ? 'bg-blue-100 text-blue-600' :
+                            'bg-emerald-100 text-emerald-600'
                         } flex items-center justify-center font-black text-xs shrink-0`}>
                             {item.symbol.substring(0, 2)}
                         </div>
@@ -298,9 +300,12 @@ const AssetRow = ({
                 </td>
 
                 {/* LTP Column */}
-                <td className="px-3 md:px-6 py-4 md:py-6 text-right tabular-nums">
+                <td className="px-3 md:px-6 py-4 md:py-6 text-right tabular-nums" title={item.type === 'US_STOCK' && item.priceUSD != null ? formatUSD(item.priceUSD) : undefined}>
                     <div className="font-black text-slate-800 text-xs md:text-sm">
                         ₹{item.currentPrice?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                        {item.type === 'US_STOCK' && item.priceUSD != null && (
+                            <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{formatUSD(item.priceUSD)}</span>
+                        )}
                     </div>
                     <div className={`text-[10px] font-black ${
                         item.dayChangePercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
@@ -318,6 +323,11 @@ const AssetRow = ({
                             }`}>
                                 {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
                             </div>
+                            {item.type === 'US_STOCK' && inrToUSD(item.absReturn, item.priceUSD, item.currentPrice) != null && (
+                                <div className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                                    {item.absReturn >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.absReturn, item.priceUSD, item.currentPrice))}
+                                </div>
+                            )}
                             <div className="text-[10px] text-slate-400 font-bold uppercase">
                                 {item.absReturnPercent >= 0 ? '+' : ''}{item.absReturnPercent.toFixed(2)}% ROI
                             </div>
@@ -389,6 +399,9 @@ const AssetRow = ({
                                     <p className="text-base md:text-lg font-black text-slate-800">
                                         {formatCurrency(item.investedValue)}
                                     </p>
+                                    {item.type === 'US_STOCK' && inrToUSD(item.investedValue, item.priceUSD, item.currentPrice) != null && (
+                                        <p className="text-[9px] font-semibold text-slate-500">{formatUSD(inrToUSD(item.investedValue, item.priceUSD, item.currentPrice))}</p>
+                                    )}
                                 </div>
                                 <div className="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
@@ -397,6 +410,9 @@ const AssetRow = ({
                                     <p className="text-base md:text-lg font-black text-indigo-600">
                                         {formatCurrency(item.currentValue)}
                                     </p>
+                                    {item.type === 'US_STOCK' && item.priceUSD != null && (
+                                        <p className="text-[9px] font-semibold text-slate-500">{formatUSD((item.totalQty || 0) * item.priceUSD)}</p>
+                                    )}
                                 </div>
                                 <div className="bg-white p-3 md:p-4 rounded-xl border border-slate-200 shadow-sm">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
@@ -407,6 +423,11 @@ const AssetRow = ({
                                     }`}>
                                         {item.absReturn >= 0 ? '+' : ''}{formatCurrency(item.absReturn)}
                                     </p>
+                                    {item.type === 'US_STOCK' && inrToUSD(item.absReturn, item.priceUSD, item.currentPrice) != null && (
+                                        <p className={`text-[9px] font-semibold ${item.absReturn >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                            {item.absReturn >= 0 ? '+' : ''}{formatUSD(inrToUSD(item.absReturn, item.priceUSD, item.currentPrice))}
+                                        </p>
+                                    )}
                                     <p className={`text-[10px] font-bold mt-1 ${
                                         item.absReturnPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'
                                     }`}>
@@ -440,9 +461,15 @@ const AssetRow = ({
                                         <div className="space-y-1">
                                             <p className="text-xs font-black text-rose-500">
                                                 STCG: {formatCurrency(item.capitalGains.stcg)}
+                                                {item.type === 'US_STOCK' && inrToUSD(item.capitalGains.stcg, item.priceUSD, item.currentPrice) != null && (
+                                                    <span className="block text-[9px] font-semibold text-slate-500">{formatUSD(inrToUSD(item.capitalGains.stcg, item.priceUSD, item.currentPrice))}</span>
+                                                )}
                                             </p>
                                             <p className="text-xs font-black text-emerald-500">
                                                 LTCG: {formatCurrency(item.capitalGains.ltcg)}
+                                                {item.type === 'US_STOCK' && inrToUSD(item.capitalGains.ltcg, item.priceUSD, item.currentPrice) != null && (
+                                                    <span className="block text-[9px] font-semibold text-slate-500">{formatUSD(inrToUSD(item.capitalGains.ltcg, item.priceUSD, item.currentPrice))}</span>
+                                                )}
                                             </p>
                                         </div>
                                     ) : (
@@ -852,11 +879,17 @@ const AssetRow = ({
                                                                         <p className="text-xs font-black text-slate-800 tabular-nums">
                                                                             ₹{tx.price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                                                         </p>
+                                                                        {item.type === 'US_STOCK' && inrToUSD(tx.price, item.priceUSD, item.currentPrice) != null && (
+                                                                            <p className="text-[9px] font-semibold text-slate-500">{formatUSD(inrToUSD(tx.price, item.priceUSD, item.currentPrice))}</p>
+                                                                        )}
                                                                     </td>
                                                                     <td className="px-3 md:px-4 py-2.5 text-right">
                                                                         <p className="text-xs font-black text-slate-700 tabular-nums">
                                                                             {formatCurrency(invested)}
                                                                         </p>
+                                                                        {item.type === 'US_STOCK' && inrToUSD(invested, item.priceUSD, item.currentPrice) != null && (
+                                                                            <p className="text-[9px] font-semibold text-slate-500">{formatUSD(inrToUSD(invested, item.priceUSD, item.currentPrice))}</p>
+                                                                        )}
                                                                     </td>
                                                                     <td className="px-3 md:px-4 py-2.5 text-right">
                                                                         <p className={`text-xs font-black tabular-nums ${
@@ -864,9 +897,17 @@ const AssetRow = ({
                                                                         }`}>
                                                                             {formatCurrency(currentVal)}
                                                                         </p>
+                                                                        {item.type === 'US_STOCK' && (isSell ? inrToUSD(currentVal, item.priceUSD, item.currentPrice) != null : item.priceUSD != null) && (
+                                                                            <p className="text-[9px] font-semibold text-slate-500">
+                                                                                {formatUSD(isSell ? inrToUSD(currentVal, item.priceUSD, item.currentPrice) : (tx.quantity * item.priceUSD))}
+                                                                            </p>
+                                                                        )}
                                                                         {isSell && (
                                                                             <p className="text-[8px] text-rose-500 font-bold mt-0.5">
                                                                                 Realized: {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
+                                                                                {item.type === 'US_STOCK' && inrToUSD(txPnl, item.priceUSD, item.currentPrice) != null && (
+                                                                                    <span className="ml-1 text-slate-500">({(txPnl >= 0 ? '+' : '')}{formatUSD(inrToUSD(txPnl, item.priceUSD, item.currentPrice))})</span>
+                                                                                )}
                                                                             </p>
                                                                         )}
                                                                     </td>
@@ -877,6 +918,9 @@ const AssetRow = ({
                                                                             }`}>
                                                                                 {txPnl >= 0 ? '+' : ''}{formatCurrency(txPnl)}
                                                                             </p>
+                                                                            {item.type === 'US_STOCK' && inrToUSD(txPnl, item.priceUSD, item.currentPrice) != null && (
+                                                                                <p className="text-[9px] font-semibold text-slate-500">{txPnl >= 0 ? '+' : ''}{formatUSD(inrToUSD(txPnl, item.priceUSD, item.currentPrice))}</p>
+                                                                            )}
                                                                             {!isSell && (
                                                                                 <p className={`text-[9px] font-bold ${
                                                                                     txPnlPercent >= 0 ? 'text-emerald-500' : 'text-rose-500'

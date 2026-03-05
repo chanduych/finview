@@ -535,28 +535,43 @@ export const handleSmartImport = async (e, onPreviewReady) => {
  * @returns {Object} Portfolio and accounts data ready for import
  */
 export const convertPreviewToPortfolio = (acceptedAssets) => {
+    if (!acceptedAssets || !Array.isArray(acceptedAssets)) {
+        console.error('Invalid acceptedAssets:', acceptedAssets);
+        return { portfolio: [], accounts: [] };
+    }
+
     const portfolio = [];
     const accounts = new Set();
 
     acceptedAssets.forEach((asset, idx) => {
-        accounts.add(asset.account);
+        try {
+            // Validate required fields
+            if (!asset.symbol || !asset.account || !asset.price || !asset.quantity) {
+                console.warn('Skipping asset with missing required fields:', asset);
+                return;
+            }
 
-        portfolio.push({
-            id: `${asset.symbol}_${asset.account}_${Date.now()}_${idx}`,
-            symbol: asset.symbol,
-            name: asset.name,
-            type: asset.type,
-            account: asset.account,
-            sector: asset.sector || '',
-            transactions: [{
-                id: Date.now() + idx,
-                type: asset.transactionType || 'BUY',
-                price: asset.price,
-                quantity: asset.quantity,
-                date: asset.date
-            }],
-            dividends: []
-        });
+            accounts.add(asset.account);
+
+            portfolio.push({
+                id: `${asset.symbol}_${asset.account}_${Date.now()}_${idx}`,
+                symbol: asset.symbol.toString().toUpperCase().trim(),
+                name: asset.name || asset.symbol,
+                type: asset.type || 'STOCK',
+                account: asset.account,
+                sector: asset.sector || '',
+                transactions: [{
+                    id: Date.now() + idx,
+                    type: asset.transactionType || 'BUY',
+                    price: parseFloat(asset.price),
+                    quantity: parseFloat(asset.quantity),
+                    date: asset.date || new Date().toISOString().split('T')[0]
+                }],
+                dividends: []
+            });
+        } catch (err) {
+            console.error('Error converting asset:', asset, err);
+        }
     });
 
     return {

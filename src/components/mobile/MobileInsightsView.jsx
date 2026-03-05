@@ -20,7 +20,7 @@ const MobileInsightsView = ({
 
     // Calculate active filter count (wallets + asset types)
     const walletFilterCount = accounts.length - activeAccounts.length;
-    const assetFilterCount = 3 - activeAssetTypes.length;
+    const assetFilterCount = 4 - activeAssetTypes.length;
     const activeFilterCount = walletFilterCount + assetFilterCount;
 
     return (
@@ -103,11 +103,12 @@ const MobileInsightsView = ({
                                 <h3 className={`text-sm font-black uppercase mb-4 ${isDarkMode ? 'text-slate-100' : 'text-slate-800'}`}>
                                     Asset Types
                                 </h3>
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     {[
                                         { value: 'STOCK', label: 'Stocks' },
                                         { value: 'MF', label: 'Mutual Funds' },
-                                        { value: 'ETF', label: 'ETFs' }
+                                        { value: 'ETF', label: 'ETFs' },
+                                        { value: 'US_STOCK', label: 'US Stocks' }
                                     ].map((asset) => {
                                         const isSelected = activeAssetTypes.includes(asset.value);
                                         return (
@@ -215,7 +216,7 @@ const MobileInsightsView = ({
                                         setActiveAccounts([...accounts]);
                                     }
                                     if (setActiveAssetTypes) {
-                                        setActiveAssetTypes(['STOCK', 'MF', 'ETF']);
+                                        setActiveAssetTypes(['STOCK', 'MF', 'ETF']); // US Stocks stay unchecked
                                     }
                                     setShowFilterSheet(false);
                                 }}

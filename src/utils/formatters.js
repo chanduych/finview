@@ -28,6 +28,32 @@ export const formatCurrencyWithDecimals = (val) =>
     }).format(val || 0);
 
 /**
+ * Formats a number as US Dollars (for US stocks display)
+ * @param {number} val - The value to format
+ * @param {boolean} compact - If true, use 2 decimal places for small amounts
+ * @returns {string} Formatted string (e.g., "$1,234.56")
+ */
+export const formatUSD = (val, compact = false) =>
+    new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: compact ? 2 : 0,
+        maximumFractionDigits: 2
+    }).format(val || 0);
+
+/**
+ * Converts INR amount to USD using current price ratio (for US stocks display).
+ * @param {number} inrAmount - Amount in INR
+ * @param {number} priceUSD - Current price in USD
+ * @param {number} currentPriceINR - Current price in INR
+ * @returns {number|null} USD amount or null if conversion not possible
+ */
+export const inrToUSD = (inrAmount, priceUSD, currentPriceINR) => {
+    if (priceUSD == null || currentPriceINR == null || currentPriceINR <= 0) return null;
+    return inrAmount * (priceUSD / currentPriceINR);
+};
+
+/**
  * Formats a date as ISO string (YYYY-MM-DD)
  * @param {Date} date - The date to format
  * @returns {string} ISO date string (e.g., "2024-01-15")

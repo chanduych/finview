@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-    Search, Activity, Building2, TrendingUp, Wallet, Layers,
+    Search, Activity, Building2, TrendingUp, Wallet, Layers, Globe,
     ChevronUp, ChevronDown
 } from 'lucide-react';
 import AssetRow from './AssetRow';
@@ -65,7 +65,8 @@ const HoldingsTable = ({
     const typeLabels = {
         'STOCK': { label: 'Stocks', icon: Activity, color: 'indigo' },
         'MF': { label: 'Mutual Funds', icon: Building2, color: 'emerald' },
-        'ETF': { label: 'ETFs', icon: TrendingUp, color: 'purple' }
+        'ETF': { label: 'ETFs', icon: TrendingUp, color: 'purple' },
+        'US_STOCK': { label: 'US Stocks', icon: Globe, color: 'blue' }
     };
 
     const toggleGroup = (type) => {

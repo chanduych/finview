@@ -37,7 +37,7 @@ const MobilePortfolioView = ({
     accounts = [],
     activeAccounts = [],
     setActiveAccounts,
-    activeAssetTypes = ['STOCK', 'MF', 'ETF'],
+    activeAssetTypes = ['STOCK', 'MF', 'ETF'], // US_STOCK unchecked by default
     setActiveAssetTypes,
     showFullySoldAssets = false,
     setShowFullySoldAssets,
@@ -100,7 +100,7 @@ const MobilePortfolioView = ({
             : [...accounts];
         const assetsToApply = tempAssetsRef.current.length > 0 
             ? [...tempAssetsRef.current] 
-            : ['STOCK', 'MF', 'ETF'];
+            : ['STOCK', 'MF', 'ETF']; // Default: US Stocks unchecked
         
         // Apply wallet filter to parent state
         if (setActiveAccounts) {
@@ -117,7 +117,7 @@ const MobilePortfolioView = ({
     
     // Clear all filters
     const clearFilters = () => {
-        // Reset to all wallets and all asset types
+        // Reset to all wallets and default asset types (US Stocks unchecked)
         if (setActiveAccounts) {
             setActiveAccounts([...accounts]);
         }
@@ -271,7 +271,7 @@ const MobilePortfolioView = ({
                         <button
                             onClick={openFilterSheet}
                             className={`p-3 rounded-xl border transition-all relative ${
-                                (activeAccounts.length < accounts.length) || (activeAssetTypes.length < 3)
+                                (activeAccounts.length < accounts.length) || (activeAssetTypes.length < 4)
                                     ? 'bg-teal-600 text-white border-teal-600'
                                     : isDarkMode 
                                         ? 'bg-slate-800 text-slate-400 border-slate-700'
@@ -280,9 +280,9 @@ const MobilePortfolioView = ({
                         >
                             <Filter size={20} />
                             {/* Active filter count badge */}
-                            {((accounts.length - activeAccounts.length) + (3 - activeAssetTypes.length)) > 0 && (
+                            {((accounts.length - activeAccounts.length) + (4 - activeAssetTypes.length)) > 0 && (
                                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-sm">
-                                    {(accounts.length - activeAccounts.length) + (3 - activeAssetTypes.length)}
+                                    {(accounts.length - activeAccounts.length) + (4 - activeAssetTypes.length)}
                                 </span>
                             )}
                         </button>
@@ -332,7 +332,8 @@ const MobilePortfolioView = ({
                             const typeLabels = {
                                 'STOCK': 'Stocks',
                                 'MF': 'Mutual Funds',
-                                'ETF': 'ETFs'
+                                'ETF': 'ETFs',
+                                'US_STOCK': 'US Stocks'
                             };
                             
                             // ✅ SHOULD-FIX: Separate open and closed positions
@@ -396,9 +397,11 @@ const MobilePortfolioView = ({
                                                         ? 'asset-pattern-stock' 
                                                         : type === 'MF'
                                                             ? 'asset-pattern-mf' 
-                                                            : 'asset-pattern-etf'
+                                                            : type === 'US_STOCK'
+                                                                ? 'asset-pattern-usstock'
+                                                                : 'asset-pattern-etf'
                                                 } text-white shadow-md`}>
-                                                    {type === 'STOCK' ? '📈' : type === 'MF' ? '💼' : '📦'}
+                                                    {type === 'STOCK' ? '📈' : type === 'MF' ? '💼' : type === 'US_STOCK' ? '🌎' : '📦'}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-1.5">
@@ -531,8 +534,8 @@ const MobilePortfolioView = ({
                                                                 {totalDayChange >= 0 ? '+' : ''}{formatCurrency(totalDayChange)}
                                                             </p>
                                                     </div>
-                                                    {/* XIRR - Only for STOCK and MF */}
-                                                    {(type === 'STOCK' || type === 'MF') && (
+                                                    {/* XIRR - For STOCK, MF, US_STOCK */}
+                                                    {(type === 'STOCK' || type === 'MF' || type === 'US_STOCK') && (
                                                         <div className={`p-2 rounded-lg ${
                                                             groupXIRR >= 0 
                                                                 ? isDarkMode ? 'bg-teal-900/30' : 'bg-teal-50'
@@ -655,11 +658,12 @@ const MobilePortfolioView = ({
                                 <h3 className={`text-sm font-black uppercase mb-4 ${
                                     isDarkMode ? 'text-slate-100' : 'text-slate-800'
                                 }`}>Asset Types</h3>
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     {[
                                         { value: 'STOCK', label: 'Stocks' },
                                         { value: 'MF', label: 'Mutual Funds' },
-                                        { value: 'ETF', label: 'ETFs' }
+                                        { value: 'ETF', label: 'ETFs' },
+                                        { value: 'US_STOCK', label: 'US Stocks' }
                                     ].map((asset) => {
                                         const isSelected = tempAssetsRef.current.includes(asset.value);
                                         return (

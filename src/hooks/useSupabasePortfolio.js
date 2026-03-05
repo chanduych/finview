@@ -28,7 +28,7 @@ export const useSupabasePortfolio = () => {
   const [accounts, setAccounts] = useState([]);
   const [marketPrices, setMarketPrices] = useState({});
   const [selectedView, setSelectedView] = useState('ALL');
-  const [expandedGroups, setExpandedGroups] = useState(['STOCK', 'MF', 'ETF', 'CASH']);
+  const [expandedGroups, setExpandedGroups] = useState(['STOCK', 'MF', 'ETF', 'US_STOCK', 'CASH']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 

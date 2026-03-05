@@ -11,7 +11,7 @@ export const usePortfolio = () => {
   const [accounts, setAccounts] = useLocalStorage(`${APP_ID}_accounts`, ['Primary Wallet', 'Brokerage']);
   const [marketPrices, setMarketPrices] = useLocalStorage(`${APP_ID}_market_prices`, {});
   const [selectedView, setSelectedView] = useLocalStorage(`${APP_ID}_selectedView`, 'ALL');
-  const [expandedGroups, setExpandedGroups] = useLocalStorage(`${APP_ID}_expandedGroups`, ['STOCK', 'MF', 'ETF', 'CASH']);
+  const [expandedGroups, setExpandedGroups] = useLocalStorage(`${APP_ID}_expandedGroups`, ['STOCK', 'MF', 'ETF', 'US_STOCK', 'CASH']);
 
   // Clean stale market prices (older than 5 minutes)
   useEffect(() => {

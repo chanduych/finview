@@ -1,4 +1,110 @@
-import { ALPHA_VANTAGE_API_KEY } from '../constants/appConfig';
+import { ALPHA_VANTAGE_API_KEY, MASSIVE_API_KEY } from '../constants/appConfig';
+
+const MASSIVE_BASE = 'https://api.massive.com';
+
+// Cache USD/INR rate (avoid hitting API every time); refresh every 10 min
+let usdInrRateCache = { rate: null, at: 0 };
+const USD_INR_CACHE_MS = 10 * 60 * 1000;
+
+/** Append API key for Massive.com (Polygon) – standard auth is apiKey query param */
+const massiveAuth = (url) => (MASSIVE_API_KEY ? `${url}${url.includes('?') ? '&' : '?'}apiKey=${MASSIVE_API_KEY}` : url);
+
+/**
+ * Fetches USD to INR exchange rate from Massive.com forex API (cached). Falls back to Alpha Vantage if needed.
+ */
+const getUSDToINRRate = async () => {
+    if (usdInrRateCache.rate != null && Date.now() - usdInrRateCache.at < USD_INR_CACHE_MS) {
+        return usdInrRateCache.rate;
+    }
+    if (MASSIVE_API_KEY) {
+        try {
+            const url = massiveAuth(`${MASSIVE_BASE}/v1/conversion/USD/INR?amount=1`);
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                const rate = typeof data?.converted === 'number' ? data.converted : null;
+                if (rate > 0) {
+                    usdInrRateCache = { rate, at: Date.now() };
+                    return rate;
+                }
+            }
+        } catch (e) {
+            console.warn('Massive USD/INR fetch failed:', e);
+        }
+    }
+    if (ALPHA_VANTAGE_API_KEY) {
+        try {
+            const url = `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=INR&apikey=${ALPHA_VANTAGE_API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) return usdInrRateCache.rate || 83;
+            const data = await res.json();
+            const rate = parseFloat(data?.['Realtime Currency Exchange Rate']?.['5. Exchange Rate']);
+            if (rate > 0) {
+                usdInrRateCache = { rate, at: Date.now() };
+                return rate;
+            }
+        } catch (e) {
+            console.warn('Alpha Vantage USD/INR fallback failed:', e);
+        }
+    }
+    return usdInrRateCache.rate || 83;
+};
+
+/**
+ * Fetches US stock quote from Massive.com (formerly Polygon.io) and converts to INR.
+ * Tries snapshot first; on 403 (forbidden, often free tier) falls back to Previous Day Bar.
+ * Returns price in INR (main), priceUSD for display, and change in INR.
+ */
+const fetchMassiveQuote = async (symbol) => {
+    if (!MASSIVE_API_KEY) return null;
+    const cleanSymbol = String(symbol).toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
+
+    const buildResult = (priceUSD, changeUSD = 0, changePercent = 0) => {
+        if (priceUSD == null || priceUSD <= 0) return null;
+        return getUSDToINRRate().then((rate) => ({
+            price: priceUSD * rate,
+            priceUSD,
+            change: changeUSD * rate,
+            changePercent,
+            name: cleanSymbol,
+            timestamp: Date.now(),
+            source: 'Massive',
+        }));
+    };
+
+    try {
+        // 1) Try snapshot first (returns 403 on many plans – snapshot is a premium endpoint)
+        const snapshotUrl = massiveAuth(`${MASSIVE_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(cleanSymbol)}`);
+        const res = await fetch(snapshotUrl);
+        if (res.ok) {
+            const data = await res.json();
+            const t = data?.ticker;
+            if (t) {
+                const priceUSD = typeof t?.day?.c === 'number' ? t.day.c : (typeof t?.lastTrade?.p === 'number' ? t.lastTrade.p : (typeof t?.lastQuote?.P === 'number' ? t.lastQuote.P : null));
+                if (priceUSD != null && priceUSD > 0) {
+                    const changeUSD = typeof t?.todaysChange === 'number' ? t.todaysChange : 0;
+                    const changePercent = typeof t?.todaysChangePerc === 'number' ? t.todaysChangePerc : 0;
+                    return buildResult(priceUSD, changeUSD, changePercent);
+                }
+            }
+        }
+        // 2) Fallback: Previous Day Bar (included on free/basic tier when snapshot returns 403)
+        if (res.status === 403 || res.status === 401 || !res.ok) {
+            const prevUrl = massiveAuth(`${MASSIVE_BASE}/v2/aggs/ticker/${encodeURIComponent(cleanSymbol)}/prev?adjusted=true`);
+            const prevRes = await fetch(prevUrl);
+            if (prevRes.ok) {
+                const prevData = await prevRes.json();
+                const bar = prevData?.results?.[0];
+                if (bar && typeof bar.c === 'number') {
+                    return buildResult(bar.c, 0, 0);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Massive quote error:', e);
+    }
+    return null;
+};
 
 /**
  * Fetches NSE stock data using Vercel serverless function (works in both dev and prod)
@@ -78,8 +184,12 @@ export const getMarketData = async (symbol, type, options = {}) => {
             };
         } else if (type === 'CASH') {
             return { price: 1, change: 0, changePercent: 0, name: symbol, source: 'CASH' };
+        } else if (type === 'US_STOCK') {
+            const massiveData = await fetchMassiveQuote(symbol);
+            if (massiveData) return massiveData;
+            return null;
         } else {
-            // STOCK or ETF - Use NSE API for all stocks (works for both NSE and BSE)
+            // STOCK or ETF - Use NSE API for Indian stocks (works for both NSE and BSE)
             const cleanSymbol = symbol.toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
 
             console.log(`Fetching stock data for ${cleanSymbol} via NSE API...`);
@@ -160,8 +270,21 @@ export const handleSelectResult = async (result) => {
             type,
             data
         };
+    } else if (result.searchType === 'US_STOCK') {
+        // US stock: no exchange suffix, use Massive for price
+        const symbolToSet = (result.symbol || '').toUpperCase().trim();
+        const name = result.name || symbolToSet;
+        const type = 'US_STOCK';
+        const data = await verifySymbol(symbolToSet, type);
+
+        return {
+            symbol: symbolToSet,
+            name,
+            type,
+            data
+        };
     } else {
-        // Stock/ETF result - preserve exchange information
+        // Indian Stock/ETF result - preserve exchange information
         let symbolToSet = result.symbol;
 
         // Check if symbol already has exchange suffix

@@ -1,5 +1,34 @@
 import { useState, useEffect } from 'react';
 import { POPULAR_STOCKS } from '../constants/stockData';
+import { MASSIVE_API_KEY } from '../constants/appConfig';
+
+const MASSIVE_BASE = 'https://api.massive.com';
+
+/**
+ * Search US stocks using Massive.com (formerly Polygon.io) reference tickers API
+ */
+const searchUSStocks = async (query) => {
+  if (!MASSIVE_API_KEY || query.length < 2) return [];
+  try {
+    const url = `${MASSIVE_BASE}/v3/reference/tickers?search=${encodeURIComponent(query)}&market=stocks&active=true&limit=10&apiKey=${MASSIVE_API_KEY}`;
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const data = await response.json();
+    const results = data?.results || [];
+    // Prefer US locale
+    const usOnly = results.filter((r) => (r.locale || '').toLowerCase() === 'us');
+    const list = (usOnly.length > 0 ? usOnly : results).slice(0, 8);
+    return list.map((r) => ({
+      symbol: (r.ticker || '').trim(),
+      name: (r.name || r.ticker || '').trim(),
+      exchange: 'US',
+      searchType: 'US_STOCK',
+    }));
+  } catch (err) {
+    console.error('US stock search error:', err);
+    return [];
+  }
+};
 
 /**
  * Search stocks using NSE autocomplete API via Vite proxy
@@ -79,8 +108,22 @@ export const useSearch = (selectedAssetType, isSelecting = false) => {
       const upperQuery = query.toUpperCase();
 
       try {
-        // For Mutual Funds (numeric or when type is MF)
-        if (/^\d+$/.test(query) || selectedAssetType === 'MF') {
+        // For US Stocks: use Alpha Vantage (US symbols only)
+        if (selectedAssetType === 'US_STOCK') {
+          console.log('🔍 Searching US stocks (Alpha Vantage) for:', query);
+          const usResults = await searchUSStocks(query);
+          if (usResults.length > 0) {
+            setSearchResults(usResults);
+          } else {
+            // Allow manual symbol entry for US tickers not in search
+            setSearchResults([{
+              symbol: upperQuery,
+              name: upperQuery,
+              exchange: 'US',
+              searchType: 'US_STOCK',
+            }]);
+          }
+        } else if (/^\d+$/.test(query) || selectedAssetType === 'MF') {
           console.log('🔍 Searching MF API for:', query);
           try {
             // Call MF API directly - it supports CORS
@@ -112,7 +155,7 @@ export const useSearch = (selectedAssetType, isSelecting = false) => {
             setSearchResults([]);
           }
         } else {
-          // For stocks/ETFs: Search NSE API with fallback to local
+          // For Indian stocks/ETFs: Search NSE API with fallback to local
           console.log('🔍 Searching NSE API for:', query);
 
           const nseResults = await searchNSEStocks(query);
