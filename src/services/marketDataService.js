@@ -76,8 +76,9 @@ const fetchMassiveQuote = async (symbol) => {
         // 1) Try snapshot first (returns 403 on many plans – snapshot is a premium endpoint)
         const snapshotUrl = massiveAuth(`${MASSIVE_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(cleanSymbol)}`);
         const res = await fetch(snapshotUrl);
+        const data = await res.json().catch(() => ({}));
+        if (data?.status === 'NOT_AUTHORIZED') return null;
         if (res.ok) {
-            const data = await res.json();
             const t = data?.ticker;
             if (t) {
                 const priceUSD = typeof t?.day?.c === 'number' ? t.day.c : (typeof t?.lastTrade?.p === 'number' ? t.lastTrade.p : (typeof t?.lastQuote?.P === 'number' ? t.lastQuote.P : null));
@@ -92,8 +93,9 @@ const fetchMassiveQuote = async (symbol) => {
         if (res.status === 403 || res.status === 401 || !res.ok) {
             const prevUrl = massiveAuth(`${MASSIVE_BASE}/v2/aggs/ticker/${encodeURIComponent(cleanSymbol)}/prev?adjusted=true`);
             const prevRes = await fetch(prevUrl);
+            const prevData = await prevRes.json().catch(() => ({}));
+            if (prevData?.status === 'NOT_AUTHORIZED') return null;
             if (prevRes.ok) {
-                const prevData = await prevRes.json();
                 const bar = prevData?.results?.[0];
                 if (bar && typeof bar.c === 'number') {
                     return buildResult(bar.c, 0, 0);
@@ -104,6 +106,48 @@ const fetchMassiveQuote = async (symbol) => {
         console.error('Massive quote error:', e);
     }
     return null;
+};
+
+/**
+ * Fetches US stock quote from Yahoo Finance (via /api/yahoo proxy). Used only for US stocks when Massive is not entitled.
+ * Returns same shape as fetchMassiveQuote: price (INR), priceUSD, change, changePercent, name, source: 'Yahoo'.
+ */
+const fetchYahooQuote = async (symbol) => {
+    const cleanSymbol = String(symbol).toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
+    try {
+        const res = await fetch(`/api/yahoo?symbol=${encodeURIComponent(cleanSymbol)}`);
+        const data = await res.json().catch(() => ({}));
+        // Support both our API format and raw Yahoo chart response (e.g. when proxied directly)
+        let priceUSD = data?.priceUSD;
+        let changeUSD = data?.change;
+        let changePercent = data?.changePercent ?? 0;
+        if (priceUSD == null && data?.chart?.result?.[0]) {
+            const meta = data.chart.result[0].meta || {};
+            priceUSD = meta.regularMarketPrice ?? meta.previousClose;
+            const prev = meta.previousClose ?? meta.chartPreviousClose;
+            if (prev != null && priceUSD != null) {
+                changeUSD = priceUSD - prev;
+                changePercent = prev !== 0 ? ((priceUSD - prev) / prev) * 100 : 0;
+            } else {
+                changeUSD = 0;
+            }
+        }
+        if (priceUSD == null || priceUSD <= 0) return null;
+        if (typeof changeUSD !== 'number') changeUSD = 0;
+        const rate = await getUSDToINRRate();
+        return {
+            price: priceUSD * rate,
+            priceUSD,
+            change: changeUSD * rate,
+            changePercent,
+            name: data?.name || cleanSymbol,
+            timestamp: Date.now(),
+            source: 'Yahoo',
+        };
+    } catch (e) {
+        console.warn('Yahoo quote error:', e);
+        return null;
+    }
 };
 
 /**
@@ -187,6 +231,9 @@ export const getMarketData = async (symbol, type, options = {}) => {
         } else if (type === 'US_STOCK') {
             const massiveData = await fetchMassiveQuote(symbol);
             if (massiveData) return massiveData;
+            // Fallback: Yahoo Finance (near real-time, no API key) – US stocks only
+            const yahooData = await fetchYahooQuote(symbol);
+            if (yahooData) return yahooData;
             return null;
         } else {
             // STOCK or ETF - Use NSE API for Indian stocks (works for both NSE and BSE)

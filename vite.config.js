@@ -31,6 +31,21 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/mf/, ''),
         secure: false,
       },
+      // Proxy for Yahoo Finance (US stocks only) – used when Massive returns NOT_AUTHORIZED
+      '/api/yahoo': {
+        target: 'https://query1.finance.yahoo.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => {
+          try {
+            const query = path.includes('?') ? path.slice(path.indexOf('?')) : '';
+            const symbol = new URLSearchParams(query).get('symbol') || 'AAPL';
+            return `/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
+          } catch {
+            return '/v8/finance/chart/AAPL?range=1d&interval=1d';
+          }
+        },
+      },
     },
   },
 })
