@@ -218,7 +218,11 @@ const PortfolioInsights = ({ insights }) => {
                                                 <div className="flex-1 relative h-5 bg-slate-200 rounded overflow-hidden">
                                                     <div 
                                                         className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-500 to-indigo-400 rounded transition-all duration-300"
-                                                        style={{ width: `${Math.max(2, (item.amount / maxAmount) * 100)}%` }}
+                                                        style={{
+                                                            width: item.amount > 0 && maxAmount > 0
+                                                                ? `${(item.amount / maxAmount) * 100}%`
+                                                                : '0%',
+                                                        }}
                                                     />
                                                     {item.amount === maxAmount && (
                                                         <div className="absolute inset-y-0 right-1 flex items-center">
@@ -228,7 +232,7 @@ const PortfolioInsights = ({ insights }) => {
                                                 </div>
                                                 <div className="w-20 text-right flex-shrink-0">
                                                     <span className={`text-[10px] font-black ${item.amount > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
-                                                        {item.amount > 0 ? formatCurrency(item.amount) : '—'}
+                                                        {formatCurrency(item.amount)}
                                                     </span>
                                                 </div>
                                             </div>
