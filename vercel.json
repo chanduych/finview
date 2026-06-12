@@ -9,6 +9,10 @@
       "destination": "/api/mf.js"
     },
     {
+      "source": "/api/yahoo",
+      "destination": "/api/yahoo.js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

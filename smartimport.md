@@ -224,3 +224,56 @@
        223 +  - [ ] Dividend import from statements
        224 +  - [ ] Corporate action handling (splits, bonuses)
        225 +  - [ ] Historical price auto-fill from market data
+
+       1. Smart Import Flow
+
+  - JSON files: Direct import (no preview, it's a backup)
+  - CSV/Excel files: Shows preview modal with intelligent field detection
+
+  2. Import Preview Modal Features
+
+  When you import a CSV/Excel, you'll see:
+  - ✅ All detected assets in cards
+  - ✅ Edit quantity, price, date, wallet for each asset
+  - ✅ Accept/Reject individual assets with checkboxes
+  - ✅ Bulk operations at the top:
+    - "Accept All" button
+    - "Reject All" button
+    - "Assign wallet to all" dropdown
+    - Filter by wallet dropdown
+  - ✅ Live stats: Total assets, accepted count, rejected count, total value
+  - ✅ Expand cards to edit fields inline
+  - ✅ Toggle transaction type (BUY/SELL)
+
+  3. How It Works Now
+
+  1. User clicks "Import Data" in Settings
+  2. Selects CSV/Excel file
+  3. Preview modal opens showing all detected assets
+  4. User can:
+    - Review each asset
+    - Edit dates/wallets/quantities
+    - Reject unwanted assets
+    - Assign wallets in bulk
+  5. User clicks "Import X Assets"
+  6. Data is imported to Supabase/LocalStorage
+  7. Success message shows stats
+  8. Modals close automatically
+  9. Data appears immediately (no logout needed!)
+
+  4. Fixed Issues
+
+  - ✅ Fixed the loading state bug causing data to not show
+  - ✅ Added file input reset after import
+  - ✅ Proper error handling with user feedback
+
+  Test It Now:
+
+  1. Go to Settings → Import Data
+  2. Upload a CSV with columns like: Symbol, Quantity, Price, Date
+  3. You'll see the preview modal pop up!
+  4. Edit/review/accept assets
+  5. Click "Import X Assets"
+  6. Done! Data appears immediately.
+
+  The smart field mapper will recognize variations like "Qty" vs "Quantity" vs "Shares" automatically!

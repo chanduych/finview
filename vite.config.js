@@ -31,7 +31,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/mf/, ''),
         secure: false,
       },
-      // Proxy for Yahoo Finance (US stocks only) – used when Massive returns NOT_AUTHORIZED
+      // Proxy for Yahoo Finance (US stocks + Indian .NS/.BO fallback)
       '/api/yahoo': {
         target: 'https://query1.finance.yahoo.com',
         changeOrigin: true,

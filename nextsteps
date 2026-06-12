@@ -1,0 +1,262 @@
+  🔴 CRITICAL (Must Fix)
+
+  1. Error Boundary Implementation
+
+  - Current Issue: No error boundaries exist - any React error will crash the entire app
+  - Impact: User data loss, poor UX
+  - Solution: Add error boundaries around major components with fallback UI
+  - Location: Wrap App.jsx, modals, and table components
+
+  2. Market Data Rate Limiting & Caching
+
+  - Current Issue: No rate limiting on NSE API calls, no persistent caching
+  - Impact: API failures, slow performance, potential IP blocks
+  - Solution:
+    - Implement exponential backoff for failed requests
+    - Add IndexedDB/localStorage caching with TTL (15-30 min)
+    - Queue market data requests (max 5 concurrent)
+  - Location: src/services/marketDataService.js:59
+
+  3. Transaction Validation for SELL Orders
+
+  - Current Issue: You can sell more shares than you own (no holdings validation)
+  - Impact: Incorrect portfolio calculations, negative holdings
+  - Solution: Check remaining quantity before allowing SELL transactions
+  - Location: src/components/AddAssetModal.jsx:168, src/App.jsx:673
+
+  4. Missing Data Migration for Existing Users
+
+  - Current Issue: Old localStorage data might have transactions without type field
+  - Impact: Calculations fail, portfolio shows incorrect data
+  - Solution: Already have migration (migrateTransactionType.js) but ensure it runs on every app load until migration is confirmed
+  - Location: src/App.jsx:74-79 (already implemented, just verify)
+
+  ---
+  🟡 HIGH PRIORITY (Important UX/Performance)
+
+  5. Optimize Re-renders with React.memo
+
+  - Current Issue: Large portfolio lists re-render unnecessarily
+  - Impact: Laggy UI with 50+ assets
+  - Solution: Wrap AssetRow, MobileAssetCard, StatsCards with React.memo
+  - Location: Multiple component files
+
+  6. Add Optimistic Updates
+
+  - Current Issue: UI waits for database response (feels slow)
+  - Impact: Poor perceived performance
+  - Solution: Update UI immediately, rollback on error
+  - Location: src/hooks/useSupabasePortfolio.js (all mutation functions)
+
+  7. Implement Debounced Search
+
+  - Current Issue: Search fires on every keystroke
+  - Impact: Unnecessary API calls, slow search
+  - Solution: Debounce search by 300-500ms
+  - Location: src/hooks/useSearch.js
+
+  8. Add Loading Skeletons Instead of Spinners
+
+  - Current Issue: White screen with spinner during data load
+  - Impact: Feels slower than it is
+  - Solution: Show skeleton loaders for portfolio items
+  - Location: src/components/SkeletonLoader.jsx (exists but underutilized)
+
+  9. Infinite Scroll/Virtualization for Large Portfolios
+
+  - Current Issue: Rendering 100+ assets causes performance issues
+  - Impact: Slow scrolling, high memory usage
+  - Solution: Use react-window or react-virtual for table rows
+  - Location: src/components/HoldingsTable.jsx, src/components/mobile/MobilePortfolioView.jsx
+
+  ---
+  🟢 MEDIUM PRIORITY (Nice to Have)
+
+  10. Add Service Worker for Offline Support
+
+  - Current Issue: App doesn't work offline
+  - Impact: Can't view portfolio without internet
+  - Solution: Cache app shell, show last known prices with timestamp
+  - Why Important: Users want to check portfolio on planes/trains
+
+  11. Implement Data Export Improvements
+
+  - Current Issue: Export doesn't include ISIN, transaction history details
+  - Impact: Limited data portability
+  - Solution: Add option to export full transaction history with tax reports
+  - Location: src/utils/importExport.js:19
+
+  12. Add Bulk Transaction Upload
+
+  - Current Issue: Smart import works for CSV but not for transaction history
+  - Impact: Hard to migrate from other platforms
+  - Solution: Allow CSV with multiple transactions per symbol
+  - Location: src/utils/smartImportMapper.js
+
+  13. Add Portfolio Comparison Charts
+
+  - Current Issue: No way to compare portfolio performance over time
+  - Impact: Can't see trends or benchmark against indices
+  - Solution: Add time-series charts showing portfolio value evolution
+  - Location: New component in src/components/ChartSection.jsx
+
+  14. Implement Toast Notifications
+
+  - Current Issue: Using alert() for feedback (blocks UI, ugly)
+  - Impact: Poor UX
+  - Solution: Already have Toast.jsx - use it everywhere instead of alert()
+  - Location: Replace all alert() calls across the app
+
+  15. Add Dark Mode Persistence
+
+  - Current Issue: Dark mode resets on page refresh
+  - Impact: Annoying for users
+  - Solution: Save dark mode preference to localStorage
+  - Location: src/hooks/useDarkMode.js (might already exist, verify)
+
+  ---
+  🔵 LOW PRIORITY (Polish & Features)
+
+  16. Add Asset Price Alerts
+
+  - Feature: Notify when stock price crosses threshold
+  - Implementation: Cron job + push notifications or email
+  - Value: Medium - nice feature for active traders
+
+  17. Add Portfolio Analytics Dashboard
+
+  - Feature: Sector-wise allocation pie chart, top performers table
+  - Implementation: New "Analytics" tab with detailed breakdowns
+  - Value: High for power users, low for casual users
+
+  18. Implement Multi-Currency Support
+
+  - Feature: Track US stocks, crypto
+  - Implementation: Add currency field, exchange rate API
+  - Value: High for international investors
+
+  19. Add Goal Tracking
+
+  - Feature: Set investment goals (₹1L by 2025)
+  - Implementation: Goals CRUD + progress bars
+  - Value: Medium - motivational feature
+
+  20. Add Social Sharing
+
+  - Feature: Share portfolio performance (anonymized)
+  - Implementation: Generate shareable images
+  - Value: Low - niche feature
+
+  21. Implement Advanced Filters
+
+  - Feature: Filter by sector, performance, date range
+  - Implementation: Add filter dropdowns in table header
+  - Value: Medium for large portfolios
+
+  22. Add Notes/Tags for Assets
+
+  - Feature: Add personal notes to each holding
+  - Implementation: Add notes field to portfolio schema
+  - Value: Low - niche feature
+
+  23. PWA Installation Prompt
+
+  - Feature: Prompt users to install as PWA
+  - Implementation: Add install banner with beforeinstallprompt event
+  - Value: Medium - improves engagement
+
+  24. Add Dividend Calendar
+
+  - Feature: Show upcoming dividend dates
+  - Implementation: Fetch dividend data from API
+  - Value: Medium for dividend investors
+
+  25. Keyboard Shortcuts
+
+  - Feature: Add shortcuts (Ctrl+N for new asset, / for search)
+  - Implementation: Add event listeners with modifier keys
+  - Value: Low - power user feature
+
+  ---
+  📊 TECHNICAL DEBT (Code Quality)
+
+  26. Split Large Components
+
+  - Issue: AddAssetModal.jsx (779 lines), HoldingsTable.jsx likely large
+  - Solution: Extract sub-components
+  - Impact: Better maintainability
+
+  27. Add TypeScript
+
+  - Issue: No type safety, potential runtime errors
+  - Solution: Migrate to TypeScript incrementally (start with types for props)
+  - Impact: Better DX, fewer bugs
+
+  28. Add Unit Tests
+
+  - Issue: No tests for calculations (FIFO, XIRR, capital gains)
+  - Solution: Add Jest + React Testing Library
+  - Impact: Catch regression bugs
+
+  29. Consolidate State Management
+
+  - Issue: Props drilling, scattered state
+  - Solution: Consider Zustand or Jotai for global state
+  - Impact: Cleaner code
+
+  30. Environment Variable Validation
+
+  - Issue: No validation for VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+  - Solution: Add Zod schema validation on startup
+  - Impact: Better error messages
+
+  ---
+  🎨 UI/UX POLISH (Visual)
+
+  31. Add Animations
+
+  - Issue: No transitions on portfolio value changes
+  - Solution: Use framer-motion for smooth number animations
+  - Value: Low - eye candy
+
+  32. Improve Mobile Responsiveness
+
+  - Issue: Some components might not be perfectly mobile-optimized
+  - Solution: Test on various screen sizes, adjust breakpoints
+  - Value: Medium
+
+  33. Add Empty States
+
+  - Issue: Blank screens when no data
+  - Solution: Already have MobileEmptyState.jsx - use everywhere
+  - Value: Low
+
+  34. Add Onboarding Tour
+
+  - Feature: Walkthrough for new users
+  - Implementation: Use react-joyride
+  - Value: Low - most users skip these
+
+  35. Improve Color Contrast (Accessibility)
+
+  - Issue: Some text might not meet WCAG AA standards
+  - Solution: Run accessibility audit, adjust colors
+  - Value: Medium for accessibility
+
+  ---
+  🚀 RECOMMENDATIONS SUMMARY
+
+  If you only fix 5 things, fix these:
+  1. ✅ Error boundaries (#1)
+  2. ✅ Market data caching & rate limiting (#2)
+  3. ✅ SELL transaction validation (#3)
+  4. ✅ Replace alerts with toast notifications (#14)
+  5. ✅ Optimize re-renders with React.memo (#5)
+
+  Best Bang for Buck (Impact vs Effort):
+  - Toast notifications (easy, huge UX boost)
+  - Loading skeletons (easy, makes app feel faster)
+  - Offline support (medium effort, great feature)
+  - React.memo optimization (easy, performance boost)
+
+  Your app is already quite polished! The smart import feature is excellent. Focus on the critical items first, then add features based on user feedback.

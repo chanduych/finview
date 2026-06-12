@@ -7,6 +7,35 @@
  * - Path-based: /api/nse/api/search/autocomplete?q=... → /api/search/autocomplete?q=...
  */
 
+const NSE_HEADERS = {
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Connection': 'keep-alive',
+  'Referer': 'https://www.nseindia.com/',
+};
+
+const fetchFromNSE = async (nseUrl) => {
+  const warmup = await fetch('https://www.nseindia.com/', {
+    headers: {
+      ...NSE_HEADERS,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+  });
+
+  const setCookies = typeof warmup.headers.getSetCookie === 'function'
+    ? warmup.headers.getSetCookie()
+    : [];
+  const cookieHeader = setCookies.map((cookie) => cookie.split(';')[0]).join('; ');
+
+  return fetch(nseUrl, {
+    headers: {
+      ...NSE_HEADERS,
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    },
+  });
+};
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -96,16 +125,7 @@ export default async function handler(req, res) {
       console.log(`[NSE API] Proxying path-based request to: ${nseUrl}`);
 
       // Fetch from NSE India API with proper headers
-      const nseResponse = await fetch(nseUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Referer': 'https://www.nseindia.com/'
-        }
-      });
+      const nseResponse = await fetchFromNSE(nseUrl);
 
       if (!nseResponse.ok) {
         console.error(`[NSE API] Error: ${nseResponse.status} ${nseResponse.statusText}`);
@@ -129,18 +149,8 @@ export default async function handler(req, res) {
     console.log(`[NSE API] Fetching data for symbol: ${symbol}`);
 
     // Fetch from NSE India API with proper headers
-    const nseResponse = await fetch(
-      `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}`,
-      {
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Referer': 'https://www.nseindia.com/'
-        }
-      }
+    const nseResponse = await fetchFromNSE(
+      `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}`
     );
 
     if (!nseResponse.ok) {

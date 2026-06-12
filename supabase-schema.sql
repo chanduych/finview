@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS portfolios (
   account_id UUID REFERENCES accounts(id) ON DELETE CASCADE NOT NULL,
   symbol TEXT NOT NULL,
   name TEXT,
-  type TEXT NOT NULL CHECK (type IN ('STOCK', 'MF', 'ETF')),
+  type TEXT NOT NULL CHECK (type IN ('STOCK', 'MF', 'ETF', 'US_STOCK')),
   sector TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,

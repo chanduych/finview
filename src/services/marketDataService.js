@@ -108,6 +108,33 @@ const fetchMassiveQuote = async (symbol) => {
     return null;
 };
 
+const toYahooIndianSymbol = (symbol, options = {}) => {
+    const cleanSymbol = String(symbol).toUpperCase().replace(/\.(NS|NSE|BO|BSE)$/i, '');
+    const suffix = options.isBSE ? '.BO' : '.NS';
+    return `${cleanSymbol}${suffix}`;
+};
+
+const parseYahooChartMeta = (data) => {
+    const meta = data?.chart?.result?.[0]?.meta || {};
+    const price = meta.regularMarketPrice ?? meta.previousClose;
+    const prev = meta.previousClose ?? meta.chartPreviousClose;
+    if (price == null || price <= 0) return null;
+
+    let change = 0;
+    let changePercent = 0;
+    if (prev != null) {
+        change = price - prev;
+        changePercent = prev !== 0 ? ((price - prev) / prev) * 100 : 0;
+    }
+
+    return {
+        price,
+        change,
+        changePercent,
+        name: meta.shortName || meta.longName,
+    };
+};
+
 /**
  * Fetches US stock quote from Yahoo Finance (via /api/yahoo proxy). Used only for US stocks when Massive is not entitled.
  * Returns same shape as fetchMassiveQuote: price (INR), priceUSD, change, changePercent, name, source: 'Yahoo'.
@@ -121,15 +148,12 @@ const fetchYahooQuote = async (symbol) => {
         let priceUSD = data?.priceUSD;
         let changeUSD = data?.change;
         let changePercent = data?.changePercent ?? 0;
-        if (priceUSD == null && data?.chart?.result?.[0]) {
-            const meta = data.chart.result[0].meta || {};
-            priceUSD = meta.regularMarketPrice ?? meta.previousClose;
-            const prev = meta.previousClose ?? meta.chartPreviousClose;
-            if (prev != null && priceUSD != null) {
-                changeUSD = priceUSD - prev;
-                changePercent = prev !== 0 ? ((priceUSD - prev) / prev) * 100 : 0;
-            } else {
-                changeUSD = 0;
+        if (priceUSD == null) {
+            const parsed = parseYahooChartMeta(data);
+            if (parsed) {
+                priceUSD = parsed.price;
+                changeUSD = parsed.change;
+                changePercent = parsed.changePercent;
             }
         }
         if (priceUSD == null || priceUSD <= 0) return null;
@@ -146,6 +170,44 @@ const fetchYahooQuote = async (symbol) => {
         };
     } catch (e) {
         console.warn('Yahoo quote error:', e);
+        return null;
+    }
+};
+
+/**
+ * Fetches Indian stock quote from Yahoo Finance (via /api/yahoo proxy).
+ * Used as fallback when NSE API is blocked (common on Vercel/datacenter IPs).
+ */
+const fetchYahooIndianQuote = async (symbol, options = {}) => {
+    const yahooSymbol = toYahooIndianSymbol(symbol, options);
+    try {
+        const res = await fetch(`/api/yahoo?symbol=${encodeURIComponent(yahooSymbol)}`);
+        const data = await res.json().catch(() => ({}));
+
+        let price = data?.priceINR;
+        let change = data?.change;
+        let changePercent = data?.changePercent ?? 0;
+        if (price == null) {
+            const parsed = parseYahooChartMeta(data);
+            if (parsed) {
+                price = parsed.price;
+                change = parsed.change;
+                changePercent = parsed.changePercent;
+            }
+        }
+
+        if (price == null || price <= 0) return null;
+
+        return {
+            price,
+            change: typeof change === 'number' ? change : 0,
+            changePercent,
+            name: data?.name || yahooSymbol.replace(/\.(NS|BO)$/i, ''),
+            timestamp: Date.now(),
+            source: 'Yahoo',
+        };
+    } catch (e) {
+        console.warn('Yahoo Indian quote error:', e);
         return null;
     }
 };
@@ -195,8 +257,9 @@ const fetchNSEData = async (symbol) => {
  * Fetches market data for a given symbol from multiple data sources.
  *
  * Priority order for STOCK/ETF:
- * 1. NSE API (real-time, works for both NSE and BSE stocks!) - PRIMARY
- * 2. Mutual Fund API (for MF)
+ * 1. NSE API (real-time) - PRIMARY when reachable
+ * 2. Yahoo Finance (.NS / .BO) - fallback when NSE is blocked
+ * 3. Mutual Fund API (for MF)
  *
  * @param {string} symbol - The stock/MF/ETF symbol
  * @param {string} type - Asset type: 'STOCK', 'ETF', 'MF', or 'CASH'
@@ -247,7 +310,14 @@ export const getMarketData = async (symbol, type, options = {}) => {
                 return nseData;
             }
 
-            console.error(`❌ NSE API failed for ${cleanSymbol}`);
+            console.warn(`NSE API failed for ${cleanSymbol}, trying Yahoo fallback...`);
+            const yahooData = await fetchYahooIndianQuote(symbol, options);
+            if (yahooData) {
+                console.log(`✅ Yahoo fallback success for ${cleanSymbol}`);
+                return yahooData;
+            }
+
+            console.error(`❌ All price sources failed for ${cleanSymbol}`);
             return null;
         }
     } catch (e) {
